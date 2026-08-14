@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/divizn/ssh-battleships/internal/game"
 )
@@ -76,17 +77,14 @@ func TestEnemyFleetStaysHiddenUntilTheGameEnds(t *testing.T) {
 	}
 }
 
-func TestPlayingOutTheBoardEndsTheGame(t *testing.T) {
-	m := press(New(), "R")
-
+// sweep fires at every cell in turn until the game ends.
+func sweep(t *testing.T, m tea.Model) tea.Model {
+	t.Helper()
 	for range game.Size {
 		for col := range game.Size {
 			m = press(m, "enter")
 			if m.(Model).phase == over {
-				if !strings.Contains(m.View(), "wins.") && !strings.Contains(m.View(), "You win.") {
-					t.Fatalf("game over but the view announces nothing:\n%s", m.View())
-				}
-				return
+				return m
 			}
 			if col < game.Size-1 {
 				m = press(m, "right")
@@ -98,4 +96,85 @@ func TestPlayingOutTheBoardEndsTheGame(t *testing.T) {
 		}
 	}
 	t.Fatal("fired at every cell without the game ending")
+	return nil
 }
+
+func TestPlayingOutTheBoardEndsTheGame(t *testing.T) {
+	m := sweep(t, press(New(), "R"))
+
+	if !strings.Contains(m.View(), "wins.") && !strings.Contains(m.View(), "You win.") {
+		t.Fatalf("game over but the view announces nothing:\n%s", m.View())
+	}
+}
+
+func TestFrameKeepsOneSizeInEveryPhase(t *testing.T) {
+	placingFrame := New().View()
+	firingFrame := press(New(), "R").View()
+	overFrame := sweep(t, press(New(), "R")).View()
+
+	for _, f := range []string{firingFrame, overFrame} {
+		if lipgloss.Width(f) != lipgloss.Width(placingFrame) || lipgloss.Height(f) != lipgloss.Height(placingFrame) {
+			t.Errorf("frame is %dx%d, want a constant %dx%d so the layout does not jump",
+				lipgloss.Width(f), lipgloss.Height(f),
+				lipgloss.Width(placingFrame), lipgloss.Height(placingFrame))
+		}
+	}
+	if w, h := lipgloss.Width(placingFrame), lipgloss.Height(placingFrame); w > 80 || h > 24 {
+		t.Errorf("frame is %dx%d, want it to fit a stock 80x24 terminal", w, h)
+	}
+}
+
+func TestSmallTerminalAsksForAResize(t *testing.T) {
+	m, _ := New().Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+
+	if !strings.Contains(m.View(), "Terminal too small") {
+		t.Errorf("view in a 40x12 window did not ask for a resize:\n%s", m.View())
+	}
+}
+
+func TestSinkIsAnnouncedAndRingsTheBell(t *testing.T) {
+	m := New()
+	m.g.Boards[foe] = game.Board{}
+	for _, s := range []game.Ship{
+		{Class: game.Destroyer, Origin: game.Coord{}},
+		{Class: game.Carrier, Origin: game.Coord{Row: 9}}, // so the destroyer sinking is not the whole war
+	} {
+		if err := m.g.Board(foe).Place(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after := press(m, "R", "enter", "right", "enter")
+
+	if !strings.Contains(after.View(), "SANK the Destroyer at B1") {
+		t.Errorf("sinking the destroyer was not announced:\n%s", after.View())
+	}
+	if !after.(Model).bell {
+		t.Error("bell did not ring on a sink")
+	}
+	if after = press(after, "right"); after.(Model).bell {
+		t.Error("bell still ringing a keypress later")
+	}
+}
+
+func TestRosterStrikesSunkShipsOnly(t *testing.T) {
+	m := New()
+	m.g.Boards[foe] = game.Board{}
+	for _, s := range []game.Ship{
+		{Class: game.Destroyer, Origin: game.Coord{}},
+		{Class: game.Carrier, Origin: game.Coord{Row: 9}}, // so the destroyer sinking is not the whole war
+	} {
+		if err := m.g.Board(foe).Place(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after := press(m, "R", "enter").(Model)
+
+	if got := after.roster(foe); got != plainRoster {
+		t.Errorf("roster after a hit but no sink = %q, want %q", got, plainRoster)
+	}
+	if got := press(after, "right", "enter").(Model).roster(foe); got == plainRoster {
+		t.Error("roster is unchanged after the destroyer sank")
+	}
+}
+
+const plainRoster = "·Carrier  ·Battleship  ·Cruiser\n·Submarine  ·Destroyer"

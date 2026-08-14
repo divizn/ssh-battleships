@@ -113,12 +113,33 @@ func (b *Board) Place(s Ship) error {
 }
 
 func (b *Board) Placed(class ShipClass) bool {
+	_, ok := b.Ship(class)
+	return ok
+}
+
+func (b *Board) Ship(class ShipClass) (Ship, bool) {
 	for _, s := range b.Ships {
 		if s.Class == class {
-			return true
+			return s, true
 		}
 	}
-	return false
+	return Ship{}, false
+}
+
+// Tally counts the shots taken at this board and how many of them landed.
+func (b *Board) Tally() (fired, hits int) {
+	for row := range Size {
+		for col := range Size {
+			switch b.shots[row][col] {
+			case Hit:
+				fired++
+				hits++
+			case Miss:
+				fired++
+			}
+		}
+	}
+	return fired, hits
 }
 
 func (b *Board) ShipAt(c Coord) (ShipClass, bool) {

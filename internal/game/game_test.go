@@ -108,6 +108,25 @@ func TestDefeatedNeedsEveryShipSunk(t *testing.T) {
 	}
 }
 
+func TestTallyCountsShotsAndHits(t *testing.T) {
+	var b Board
+	if err := b.Place(Ship{Class: Destroyer, Origin: Coord{0, 0}}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if fired, hits := b.Tally(); fired != 0 || hits != 0 {
+		t.Fatalf("fresh board tallies %d/%d, want 0/0", hits, fired)
+	}
+
+	for _, c := range []Coord{{0, 0}, {5, 5}, {9, 9}} {
+		if _, err := b.Fire(c); err != nil {
+			t.Fatalf("fire %v: %v", c, err)
+		}
+	}
+	if fired, hits := b.Tally(); fired != 3 || hits != 1 {
+		t.Errorf("Tally = %d hits of %d shots, want 1 of 3", hits, fired)
+	}
+}
+
 func TestAutoPlaceProducesALegalFleet(t *testing.T) {
 	for seed := range 200 {
 		var b Board

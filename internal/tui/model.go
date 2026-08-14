@@ -24,16 +24,26 @@ const (
 	over
 )
 
+// shotLog is the last thing one side did, kept as a result so the view can colour it.
+type shotLog struct {
+	set  bool
+	res  game.Result
+	at   game.Coord
+	note string
+}
+
 type Model struct {
-	g        game.Game
-	bot      *ai.Bot
-	rng      *rand.Rand
-	phase    phase
-	cursor   game.Coord
-	vertical bool
-	next     int
-	yourShot string
-	botShot  string
+	g             game.Game
+	bot           *ai.Bot
+	rng           *rand.Rand
+	phase         phase
+	cursor        game.Coord
+	vertical      bool
+	next          int
+	yourShot      shotLog
+	botShot       shotLog
+	bell          bool
+	width, height int
 }
 
 func New() Model {
@@ -48,10 +58,16 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width, m.height = size.Width, size.Height
+		return m, nil
+	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return m, nil
 	}
+	m.bell = false
+
 	switch key.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
@@ -64,7 +80,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateFiring(key.String()), nil
 	case over:
 		if key.String() == "n" {
-			return New(), nil
+			fresh := New()
+			fresh.width, fresh.height = m.width, m.height
+			return fresh, nil
 		}
 	}
 	return m, nil
@@ -103,10 +121,11 @@ func (m Model) updateFiring(key string) Model {
 
 	res, err := m.g.Fire(m.cursor)
 	if err != nil {
-		m.yourShot = "you have already fired at " + label(m.cursor)
+		m.yourShot = shotLog{set: true, note: "You have already fired at " + label(m.cursor) + "."}
 		return m
 	}
-	m.yourShot = describe("You", res, m.cursor)
+	m.yourShot = shotLog{set: true, res: res, at: m.cursor}
+	m.bell = res.Sunk
 	if m.g.Over {
 		m.phase = over
 		return m
@@ -115,11 +134,12 @@ func (m Model) updateFiring(key string) Model {
 	shot := m.bot.NextShot()
 	res, err = m.g.Fire(shot)
 	if err != nil {
-		m.botShot = fmt.Sprintf("bot fired at %s: %v", label(shot), err)
+		m.botShot = shotLog{set: true, note: fmt.Sprintf("bot fired at %s: %v", label(shot), err)}
 		return m
 	}
 	m.bot.Record(shot, res)
-	m.botShot = describe("Bot", res, shot)
+	m.botShot = shotLog{set: true, res: res, at: shot}
+	m.bell = m.bell || res.Sunk
 	if m.g.Over {
 		m.phase = over
 	}
@@ -154,15 +174,4 @@ func (m Model) pending() game.Ship {
 
 func label(c game.Coord) string {
 	return fmt.Sprintf("%c%d", 'A'+rune(c.Col), c.Row+1)
-}
-
-func describe(who string, res game.Result, c game.Coord) string {
-	switch {
-	case res.Sunk:
-		return fmt.Sprintf("%s sank the %s at %s", who, res.Class, label(c))
-	case res.Hit:
-		return fmt.Sprintf("%s hit the %s at %s", who, res.Class, label(c))
-	default:
-		return fmt.Sprintf("%s missed at %s", who, label(c))
-	}
 }
