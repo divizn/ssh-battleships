@@ -9,7 +9,9 @@ curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-com
 chmod +x /usr/libexec/docker/cli-plugins/docker-compose
 
 # the al2023 docker package ships buildx 0.12.1, older than the compose above will build with
-tag=$(curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest | grep -m1 tag_name | cut -d: -f2 | tr -d ' ",')
+# the tag is read from where /releases/latest redirects to, because a pipe into grep -m1 closes
+# curl's output early and pipefail turns that into a failed boot
+tag=$(basename "$(curl -fsSLI -o /dev/null -w '%%{url_effective}' https://github.com/docker/buildx/releases/latest)")
 curl -fsSL https://github.com/docker/buildx/releases/download/$tag/buildx-$tag.linux-arm64 \
   -o /usr/libexec/docker/cli-plugins/docker-buildx
 chmod +x /usr/libexec/docker/cli-plugins/docker-buildx
