@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,6 +36,7 @@ func main() {
 }
 
 func run(addr, hostKey string, local bool) error {
+	loadEnv(".env")
 	db := store.New(os.Getenv("UPSTASH_REDIS_REST_URL"), os.Getenv("UPSTASH_REDIS_REST_TOKEN"))
 	if db == nil {
 		fmt.Fprintln(os.Stderr, "no redis configured, names and scores will not be kept")
@@ -78,6 +81,33 @@ func run(addr, hostKey string, local bool) error {
 		return err
 	}
 	return nil
+}
+
+// loadEnv fills in whatever the shell has not already set, so a local run picks up the same
+// credentials deployment gets without exporting them by hand. On Fly the file is absent and
+// the secrets are already in the environment, so this does nothing.
+func loadEnv(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	lines := bufio.NewScanner(f)
+	for lines.Scan() {
+		line := strings.TrimSpace(lines.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		name, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		if _, set := os.LookupEnv(name); !set {
+			os.Setenv(name, strings.Trim(strings.TrimSpace(value), `"'`))
+		}
+	}
 }
 
 func me() lobby.Player {
