@@ -55,8 +55,8 @@ func TestBotSinksEveryFleetWithinBounds(t *testing.T) {
 	}
 
 	mean := float64(total) / games
-	if mean > 70 {
-		t.Errorf("mean %.1f shots, want a hunt-and-target bot under 70", mean)
+	if mean > 55 {
+		t.Errorf("mean %.1f shots, want a hunt-and-target bot under 55", mean)
 	}
 	t.Logf("worst %d shots, mean %.1f", worst, mean)
 }

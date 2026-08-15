@@ -19,6 +19,10 @@ func TestCanPlace(t *testing.T) {
 		{"off bottom edge", Ship{Class: Carrier, Origin: Coord{6, 0}, Vertical: true}, ErrOutOfBounds},
 		{"negative origin", Ship{Class: Destroyer, Origin: Coord{-1, 0}}, ErrOutOfBounds},
 		{"crosses existing ship", Ship{Class: Battleship, Origin: Coord{2, 4}, Vertical: true}, ErrOverlap},
+		{"end to end", Ship{Class: Destroyer, Origin: Coord{4, 6}}, ErrTouching},
+		{"side by side", Ship{Class: Destroyer, Origin: Coord{3, 3}}, ErrTouching},
+		{"corner to corner", Ship{Class: Destroyer, Origin: Coord{3, 6}}, ErrTouching},
+		{"one clear cell away", Ship{Class: Destroyer, Origin: Coord{4, 7}}, nil},
 		{"same class twice", Ship{Class: Cruiser, Origin: Coord{8, 0}}, ErrDuplicate},
 	}
 
@@ -108,6 +112,53 @@ func TestDefeatedNeedsEveryShipSunk(t *testing.T) {
 	}
 }
 
+func TestSinkingRevealsTheWaterAround(t *testing.T) {
+	var b Board
+	if err := b.Place(Ship{Class: Destroyer, Origin: Coord{4, 4}}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := b.Fire(Coord{4, 4}); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.At(Coord{3, 3}); got != Unshot {
+		t.Fatalf("corner at 3,3 = %v before the sink, want Unshot", got)
+	}
+
+	if _, err := b.Fire(Coord{4, 5}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range (Ship{Class: Destroyer, Origin: Coord{4, 4}}).Halo() {
+		if got := b.At(c); got != Water {
+			t.Errorf("halo cell %v = %v after the sink, want Water", c, got)
+		}
+	}
+	if got := b.At(Coord{4, 4}); got != Hit {
+		t.Errorf("the ship's own cell = %v, want it left as Hit", got)
+	}
+	if got := b.At(Coord{2, 4}); got != Unshot {
+		t.Errorf("cell two rows away = %v, want it left alone", got)
+	}
+	if _, err := b.Fire(Coord{3, 3}); !errors.Is(err, ErrAlreadyShot) {
+		t.Errorf("firing into revealed water = %v, want ErrAlreadyShot", err)
+	}
+}
+
+func TestRevealedWaterIsNotCountedAsAShot(t *testing.T) {
+	var b Board
+	if err := b.Place(Ship{Class: Destroyer, Origin: Coord{4, 4}}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	for _, c := range []Coord{{4, 4}, {4, 5}} {
+		if _, err := b.Fire(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if fired, hits := b.Tally(); fired != 2 || hits != 2 {
+		t.Errorf("Tally = %d hits of %d shots, want 2 of 2 with the halo excluded", hits, fired)
+	}
+}
+
 func TestTallyCountsShotsAndHits(t *testing.T) {
 	var b Board
 	if err := b.Place(Ship{Class: Destroyer, Origin: Coord{0, 0}}); err != nil {
@@ -146,6 +197,31 @@ func TestAutoPlaceProducesALegalFleet(t *testing.T) {
 				}
 				seen[c] = true
 			}
+		}
+		for _, s := range b.Ships {
+			for _, c := range s.Halo() {
+				if other, ok := b.ShipAt(c); ok {
+					t.Fatalf("seed %d: %v touches %v at %v", seed, s.Class, other, c)
+				}
+			}
+		}
+	}
+}
+
+// The no-touch rule makes a fleet much harder to fit, so AutoPlace has to cope with an
+// awkward manual placement rather than spinning on it.
+func TestAutoPlaceFinishesAroundAnAwkwardManualShip(t *testing.T) {
+	for seed := range 100 {
+		var b Board
+		manual := Ship{Class: Cruiser, Origin: Coord{Row: 4, Col: 4}}
+		if err := b.Place(manual); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		if !AutoPlace(&b, rand.New(rand.NewSource(int64(seed)))) {
+			t.Fatalf("seed %d: could not finish the fleet around %+v", seed, manual)
+		}
+		if len(b.Ships) != len(Fleet) {
+			t.Fatalf("seed %d: placed %d ships, want %d", seed, len(b.Ships), len(Fleet))
 		}
 	}
 }

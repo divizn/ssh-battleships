@@ -112,7 +112,9 @@ func (m Model) cell(p game.Player, c game.Coord, ghost []game.Coord) string {
 	case m.g.Board(p).At(c) == game.Hit:
 		style, glyph = hit, "X"
 	case m.g.Board(p).At(c) == game.Miss:
-		glyph = "o"
+		style, glyph = dim, "o"
+	case m.g.Board(p).At(c) == game.Water:
+		glyph = "×"
 	default:
 		if _, ok := m.g.Board(p).ShipAt(c); ok && m.reveals(p) {
 			style, glyph = ship, "#"

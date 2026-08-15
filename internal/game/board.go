@@ -14,7 +14,8 @@ const (
 var (
 	ErrOutOfBounds = errors.New("ship or shot outside the board")
 	ErrOverlap     = errors.New("ship overlaps another ship")
-	ErrAlreadyShot = errors.New("cell already fired at")
+	ErrTouching    = errors.New("ships cannot touch, not even at the corners")
+	ErrAlreadyShot = errors.New("cell already marked")
 	ErrDuplicate   = errors.New("ship class already placed")
 )
 
@@ -69,13 +70,36 @@ func (s Ship) Sunk() bool {
 	return s.Hits >= s.Class.Length()
 }
 
+// Halo is the ring of cells around a ship, corners included. No other ship may sit there,
+// so once this one sinks the whole ring is known to be water.
+func (s Ship) Halo() []Coord {
+	own := s.Cells()
+	var ring []Coord
+	for _, c := range own {
+		for dr := -1; dr <= 1; dr++ {
+			for dc := -1; dc <= 1; dc++ {
+				n := Coord{Row: c.Row + dr, Col: c.Col + dc}
+				if n.Valid() && !slices.Contains(own, n) && !slices.Contains(ring, n) {
+					ring = append(ring, n)
+				}
+			}
+		}
+	}
+	return ring
+}
+
 type Shot uint8
 
 const (
 	Unshot Shot = iota
 	Miss
 	Hit
+	// Water is a cell revealed as empty by a neighbouring ship sinking, never fired at.
+	Water
 )
+
+// Known reports whether anything is already known about the cell.
+func (s Shot) Known() bool { return s != Unshot }
 
 type Result struct {
 	Hit   bool
@@ -95,6 +119,11 @@ func (b *Board) CanPlace(s Ship) error {
 		}
 		if _, ok := b.ShipAt(c); ok {
 			return ErrOverlap
+		}
+	}
+	for _, c := range s.Halo() {
+		if _, ok := b.ShipAt(c); ok {
+			return ErrTouching
 		}
 	}
 	if b.Placed(s.Class) {
@@ -162,7 +191,7 @@ func (b *Board) Fire(c Coord) (Result, error) {
 	if !c.Valid() {
 		return Result{}, ErrOutOfBounds
 	}
-	if b.shots[c.Row][c.Col] != Unshot {
+	if b.shots[c.Row][c.Col].Known() {
 		return Result{}, ErrAlreadyShot
 	}
 	for i := range b.Ships {
@@ -171,10 +200,23 @@ func (b *Board) Fire(c Coord) (Result, error) {
 		}
 		b.shots[c.Row][c.Col] = Hit
 		b.Ships[i].Hits++
+		if b.Ships[i].Sunk() {
+			b.reveal(b.Ships[i])
+		}
 		return Result{Hit: true, Sunk: b.Ships[i].Sunk(), Class: b.Ships[i].Class}, nil
 	}
 	b.shots[c.Row][c.Col] = Miss
 	return Result{}, nil
+}
+
+// reveal marks the water around a ship that has just gone down. Nothing can be hiding there,
+// so neither player should waste a shot on it.
+func (b *Board) reveal(s Ship) {
+	for _, c := range s.Halo() {
+		if !b.shots[c.Row][c.Col].Known() {
+			b.shots[c.Row][c.Col] = Water
+		}
+	}
 }
 
 func (b *Board) Defeated() bool {
@@ -189,20 +231,43 @@ func (b *Board) Defeated() bool {
 	return true
 }
 
-func AutoPlace(b *Board, rng *rand.Rand) {
+// AutoPlace fills out the fleet, keeping any ships already placed by hand. It reports false
+// if those manual placements leave nowhere legal for the rest.
+func AutoPlace(b *Board, rng *rand.Rand) bool {
+	kept := len(b.Ships)
+	for range 100 {
+		if fill(b, rng) {
+			return true
+		}
+		b.Ships = b.Ships[:kept]
+	}
+	return false
+}
+
+func fill(b *Board, rng *rand.Rand) bool {
 	for _, class := range Fleet {
 		if b.Placed(class) {
 			continue
 		}
-		for {
-			s := Ship{
-				Class:    class,
-				Origin:   Coord{rng.Intn(Size), rng.Intn(Size)},
-				Vertical: rng.Intn(2) == 0,
-			}
-			if b.Place(s) == nil {
-				break
-			}
+		if !scatter(b, class, rng) {
+			return false
 		}
 	}
+	return true
+}
+
+// scatter drops one ship at random spots until it lands legally, giving up rather than
+// spinning forever on a board that has no room left for it.
+func scatter(b *Board, class ShipClass, rng *rand.Rand) bool {
+	for range 500 {
+		s := Ship{
+			Class:    class,
+			Origin:   Coord{rng.Intn(Size), rng.Intn(Size)},
+			Vertical: rng.Intn(2) == 0,
+		}
+		if b.Place(s) == nil {
+			return true
+		}
+	}
+	return false
 }

@@ -32,16 +32,31 @@ func (b *Bot) NextShot() game.Coord {
 
 func (b *Bot) Record(c game.Coord, res game.Result) {
 	b.fired[c.Row][c.Col] = true
-	switch {
-	case res.Sunk:
-		// ponytail: a sunk ship drops the whole cluster, so hits on a ship
-		// adjacent to it are forgotten. Track per-ship clusters if the bot
-		// needs to be stronger.
+	if !res.Hit {
+		return
+	}
+	b.cluster = append(b.cluster, c)
+	if res.Sunk {
+		b.writeOffHalo()
 		b.cluster = nil
 		b.targets = nil
-	case res.Hit:
-		b.cluster = append(b.cluster, c)
-		b.targets = b.follow()
+		return
+	}
+	b.targets = b.follow()
+}
+
+// writeOffHalo crosses off the ring around a ship that just sank. Ships never touch, so the
+// board has already marked those cells as water and firing at them would be rejected.
+func (b *Bot) writeOffHalo() {
+	for _, c := range b.cluster {
+		for dr := -1; dr <= 1; dr++ {
+			for dc := -1; dc <= 1; dc++ {
+				n := game.Coord{Row: c.Row + dr, Col: c.Col + dc}
+				if n.Valid() {
+					b.fired[n.Row][n.Col] = true
+				}
+			}
+		}
 	}
 }
 
