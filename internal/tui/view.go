@@ -93,11 +93,15 @@ func (m Model) menuPane() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, m.st.column.Render(left), gap, m.board())
 }
 
-// record is this player's own tally, bot games included. It stays blank for a session
-// nothing is being kept for, rather than claiming a record of nought.
+// record is this player's own tally, bot games included. A keyless session is told why it will
+// have none, since otherwise a whole ranked game is played and silently thrown away. With no
+// database at all it stays blank, because then there is nothing the player could do about it.
 func (m Model) record() string {
-	if !m.db.Tracks(m.me.ID) {
+	if m.db == nil {
 		return ""
+	}
+	if !m.db.Tracks(m.me.ID) {
+		return "No SSH key on this session, so results are not recorded. Add one and reconnect to be ranked."
 	}
 	if m.profile.Games == 0 {
 		return "No games played yet."

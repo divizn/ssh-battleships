@@ -338,3 +338,21 @@ func TestLeavingAGameReturnsToTheMenu(t *testing.T) {
 		t.Errorf("screen = %v with session %v, want back at the menu with no room", m.screen, m.sess)
 	}
 }
+
+// A keyless session plays perfectly well but nothing it does is kept, which is worth saying
+// before the game rather than discovering afterwards that a real win vanished.
+func TestKeylessSessionIsToldItIsUnranked(t *testing.T) {
+	db := store.New("http://redis.invalid", "token")
+	m := New(lobby.New(), db, lobby.Player{ID: "anon:deadbeef", Name: "juanm"})
+	if got := m.View(); !strings.Contains(got, "No SSH key") {
+		t.Errorf("a keyless session was not warned:\n%s", got)
+	}
+}
+
+// With no database at all there is nothing the player could do, so the menu says nothing.
+func TestNoDatabaseMeansNoWarning(t *testing.T) {
+	m := New(lobby.New(), nil, lobby.Player{ID: "anon:deadbeef", Name: "juanm"})
+	if got := m.View(); strings.Contains(got, "No SSH key") {
+		t.Errorf("warned about keys with no database configured:\n%s", got)
+	}
+}
