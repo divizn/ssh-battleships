@@ -2,7 +2,9 @@ package game
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
+	"slices"
 	"testing"
 )
 
@@ -13,12 +15,12 @@ func TestCanPlace(t *testing.T) {
 		want error
 	}{
 		{"top left horizontal", Ship{Class: Carrier, Origin: Coord{0, 0}}, nil},
-		{"flush right edge", Ship{Class: Carrier, Origin: Coord{0, 5}}, nil},
-		{"flush bottom edge", Ship{Class: Carrier, Origin: Coord{5, 0}, Vertical: true}, nil},
-		{"off right edge", Ship{Class: Carrier, Origin: Coord{0, 6}}, ErrOutOfBounds},
-		{"off bottom edge", Ship{Class: Carrier, Origin: Coord{6, 0}, Vertical: true}, ErrOutOfBounds},
+		{"flush right edge", Ship{Class: Carrier, Origin: Coord{0, Size - 5}}, nil},
+		{"flush bottom edge", Ship{Class: Carrier, Origin: Coord{Size - 5, 0}, Rotation: 1}, nil},
+		{"off right edge", Ship{Class: Carrier, Origin: Coord{0, Size - 4}}, ErrOutOfBounds},
+		{"off bottom edge", Ship{Class: Carrier, Origin: Coord{Size - 4, 0}, Rotation: 1}, ErrOutOfBounds},
 		{"negative origin", Ship{Class: Destroyer, Origin: Coord{-1, 0}}, ErrOutOfBounds},
-		{"crosses existing ship", Ship{Class: Battleship, Origin: Coord{2, 4}, Vertical: true}, ErrOverlap},
+		{"crosses existing ship", Ship{Class: Battleship, Origin: Coord{2, 4}, Rotation: 1}, ErrOverlap},
 		{"end to end", Ship{Class: Destroyer, Origin: Coord{4, 6}}, ErrTouching},
 		{"side by side", Ship{Class: Destroyer, Origin: Coord{3, 3}}, ErrTouching},
 		{"corner to corner", Ship{Class: Destroyer, Origin: Coord{3, 6}}, ErrTouching},
@@ -41,7 +43,7 @@ func TestCanPlace(t *testing.T) {
 
 func TestPlaceRejectedShipIsNotStored(t *testing.T) {
 	var b Board
-	if err := b.Place(Ship{Class: Carrier, Origin: Coord{0, 8}}); err == nil {
+	if err := b.Place(Ship{Class: Carrier, Origin: Coord{0, Size - 2}}); err == nil {
 		t.Fatal("expected out of bounds placement to fail")
 	}
 	if len(b.Ships) != 0 {
@@ -62,7 +64,7 @@ func TestFire(t *testing.T) {
 		{"sink", []Coord{{0, 0}}, Coord{0, 1}, Result{Hit: true, Sunk: true, Class: Destroyer}, nil},
 		{"repeat hit", []Coord{{0, 0}}, Coord{0, 0}, Result{}, ErrAlreadyShot},
 		{"repeat miss", []Coord{{9, 9}}, Coord{9, 9}, Result{}, ErrAlreadyShot},
-		{"off board", nil, Coord{10, 0}, Result{}, ErrOutOfBounds},
+		{"off board", nil, Coord{Size, 0}, Result{}, ErrOutOfBounds},
 	}
 
 	for _, tt := range tests {
@@ -228,7 +230,7 @@ func TestAutoPlaceFinishesAroundAnAwkwardManualShip(t *testing.T) {
 
 func TestAutoPlaceKeepsManualPlacements(t *testing.T) {
 	var b Board
-	manual := Ship{Class: Carrier, Origin: Coord{0, 0}, Vertical: true}
+	manual := Ship{Class: Carrier, Origin: Coord{0, 0}, Rotation: 1}
 	if err := b.Place(manual); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -301,4 +303,48 @@ func twoDestroyerGame(t *testing.T) *Game {
 		}
 	}
 	return &g
+}
+
+// The L shaped Corvette is the one whose rotations are all different, so a sign error in
+// Cells shows up here and nowhere else.
+func TestCorvetteTurnsThroughFourDistinctShapes(t *testing.T) {
+	want := [4][]Coord{
+		{{0, 0}, {1, 0}, {2, 0}, {2, 1}},
+		{{0, 2}, {0, 1}, {0, 0}, {1, 0}},
+		{{2, 1}, {1, 1}, {0, 1}, {0, 0}},
+		{{1, 0}, {1, 1}, {1, 2}, {0, 2}},
+	}
+	seen := map[string]bool{}
+	for rot := range 4 {
+		got := Ship{Class: Corvette, Rotation: rot}.Cells()
+		if !slices.Equal(got, want[rot]) {
+			t.Errorf("rotation %d = %v, want %v", rot, got, want[rot])
+		}
+		seen[fmt.Sprint(got)] = true
+	}
+	if len(seen) != 4 {
+		t.Errorf("the four rotations produced %d distinct shapes", len(seen))
+	}
+	if got := (Ship{Class: Corvette, Rotation: 4}).Cells(); !slices.Equal(got, want[0]) {
+		t.Errorf("rotation 4 = %v, want it to wrap round to rotation 0", got)
+	}
+}
+
+// Origin is the shape's top left corner whichever way it faces, so a rotated ship in the
+// corner is still on the board.
+func TestRotatedShipsStayInTheCorner(t *testing.T) {
+	for _, class := range Fleet {
+		for rot := range 4 {
+			s := Ship{Class: class, Origin: Coord{0, 0}, Rotation: rot}
+			for _, c := range s.Cells() {
+				if !c.Valid() {
+					t.Errorf("%s at rotation %d reaches %v, off the board", class, rot, c)
+				}
+			}
+			if len(s.Cells()) != len(class.Shape()) {
+				t.Errorf("%s at rotation %d covers %d cells, want %d",
+					class, rot, len(s.Cells()), len(class.Shape()))
+			}
+		}
+	}
 }

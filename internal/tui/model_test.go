@@ -134,7 +134,7 @@ func TestPlacementWalksTheFleetThroughTheRoom(t *testing.T) {
 	if len(ships) != 1 {
 		t.Fatalf("board holds %d ships, want the carrier only", len(ships))
 	}
-	if want := (game.Ship{Class: game.Carrier, Vertical: true}); ships[0] != want {
+	if want := (game.Ship{Class: game.Carrier, Rotation: 1}); ships[0] != want {
 		t.Errorf("placed %+v, want %+v", ships[0], want)
 	}
 	if !strings.Contains(m.View(), "Place your Battleship") {
@@ -251,8 +251,8 @@ func TestFrameKeepsOneSizeOnEveryScreen(t *testing.T) {
 				lipgloss.Width(f), lipgloss.Height(f), lipgloss.Width(want), lipgloss.Height(want))
 		}
 	}
-	if w, h := lipgloss.Width(want), lipgloss.Height(want); w > 80 || h > 24 {
-		t.Errorf("frame is %dx%d, want it to fit a stock 80x24 terminal", w, h)
+	if w, h := lipgloss.Width(want), lipgloss.Height(want); w > 90 || h > 34 {
+		t.Errorf("frame is %dx%d, want it to stay within 90x34", w, h)
 	}
 }
 

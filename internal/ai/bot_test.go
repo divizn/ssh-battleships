@@ -54,9 +54,12 @@ func TestBotSinksEveryFleetWithinBounds(t *testing.T) {
 		total += n
 	}
 
+	// half the board: hunting dominates on a board this size, but a bot doing worse than this
+	// has stopped targeting and is close to firing at random.
+	budget := float64(game.Size*game.Size) / 2
 	mean := float64(total) / games
-	if mean > 55 {
-		t.Errorf("mean %.1f shots, want a hunt-and-target bot under 55", mean)
+	if mean > budget {
+		t.Errorf("mean %.1f shots, want a hunt-and-target bot under %.0f", mean, budget)
 	}
 	t.Logf("worst %d shots, mean %.1f", worst, mean)
 }

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	colWidth  = 32
+	colWidth  = 36
 	gap       = "      "
 	bodyWidth = colWidth*2 + len(gap)
 )
@@ -66,9 +66,9 @@ func (m Model) pane() string {
 	return lipgloss.NewStyle().Width(bodyWidth).Height(paneHeight).Render(content)
 }
 
-// paneHeight is what a pair of boards needs: heading, letters, ten rows, a gap, two roster
-// lines and the tally.
-const paneHeight = 1 + 1 + game.Size + 1 + 2 + 1
+// paneHeight is what a pair of boards needs: heading, letters, the rows, a gap, the roster
+// and the tally.
+var paneHeight = 1 + 1 + game.Size + 1 + rosterLines + 1
 
 func enemyHeading(snap lobby.Snapshot) string {
 	if snap.Opponent.Name == "" {
@@ -166,7 +166,11 @@ func (m Model) side(p game.Player, name string) string {
 
 func (m Model) grid(p game.Player) string {
 	var b strings.Builder
-	b.WriteString(m.st.dim.Render("    A B C D E F G H I J") + "\n")
+	letters := make([]string, game.Size)
+	for i := range letters {
+		letters[i] = string(rune('A' + i))
+	}
+	b.WriteString(m.st.dim.Render("    "+strings.Join(letters, " ")) + "\n")
 
 	ghost := m.ghost(p)
 	for row := range game.Size {
@@ -226,8 +230,16 @@ func (m Model) roster(p game.Player) string {
 			names = append(names, m.st.water.Render("·")+class.String())
 		}
 	}
-	return strings.Join(names[:3], "  ") + "\n" + strings.Join(names[3:], "  ")
+	lines := make([]string, 0, rosterLines)
+	for i := 0; i < len(names); i += rosterPerLine {
+		lines = append(lines, strings.Join(names[i:min(i+rosterPerLine, len(names))], "  "))
+	}
+	return strings.Join(lines, "\n")
 }
+
+const rosterPerLine = 3
+
+var rosterLines = (len(game.Fleet) + rosterPerLine - 1) / rosterPerLine
 
 // tally summarises the shots taken at one board, named for whoever is firing them.
 func (m Model) tally(p game.Player) string {
@@ -291,7 +303,7 @@ func (m Model) subline() string {
 	}
 	switch m.snap.Phase {
 	case lobby.Placing:
-		return m.st.dim.Render(map[bool]string{true: "vertical", false: "horizontal"}[m.vertical])
+		return m.st.dim.Render([...]string{"0°", "90°", "180°", "270°"}[m.rotation])
 	case lobby.Firing:
 		if m.snap.Away {
 			return m.st.hurt.Render(fmt.Sprintf("%s dropped out, back within %s or they forfeit.",
@@ -408,8 +420,5 @@ func (m Model) active() game.Player {
 }
 
 func pad(n int) string {
-	if n < 10 {
-		return "  " + string(rune('0'+n))
-	}
-	return " 10"
+	return fmt.Sprintf("%3d", n)
 }

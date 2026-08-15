@@ -8,7 +8,7 @@ import (
 	"github.com/divizn/ssh-battleships/internal/game"
 )
 
-// testFleet is a legal layout kept clear of rows 8 and 9, which leaves the loser somewhere
+// testFleet is a legal layout kept clear of row 8 and below, which leaves the loser somewhere
 // harmless to shoot while the winner works through the cells above.
 var testFleet = []game.Ship{
 	{Class: game.Carrier, Origin: game.Coord{Row: 0, Col: 0}},
@@ -16,6 +16,9 @@ var testFleet = []game.Ship{
 	{Class: game.Battleship, Origin: game.Coord{Row: 2, Col: 0}},
 	{Class: game.Cruiser, Origin: game.Coord{Row: 4, Col: 0}},
 	{Class: game.Submarine, Origin: game.Coord{Row: 6, Col: 0}},
+	{Class: game.Corvette, Origin: game.Coord{Row: 0, Col: 9}},
+	{Class: game.Cutter, Origin: game.Coord{Row: 0, Col: 12}},
+	{Class: game.Tender, Origin: game.Coord{Row: 4, Col: 9}},
 }
 
 func results(l *Lobby) chan string {
@@ -60,7 +63,7 @@ func cells(ships []game.Ship) []game.Coord {
 	return all
 }
 
-// safeCells are the two bottom rows, which testFleet never reaches into.
+// safeCells are the bottom rows, which testFleet never reaches into.
 func safeCells() []game.Coord {
 	var all []game.Coord
 	for row := 8; row < game.Size; row++ {

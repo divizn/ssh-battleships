@@ -84,35 +84,22 @@ func (b *Bot) hunt() game.Coord {
 	return any[b.rng.Intn(len(any))]
 }
 
-// follow returns the cells worth trying next given the current cluster of hits:
-// the four neighbours of a lone hit, or the two ends of an established line.
+// follow returns the cells worth trying next given the current cluster of hits: every
+// neighbour of every hit, with the ends of an established line last so NextShot, which pops
+// from the back, tries those first. The bend of an L or a T is why the line is only a
+// preference here and not the whole search.
 func (b *Bot) follow() []game.Coord {
-	first := b.cluster[0]
 	var candidates []game.Coord
-	if len(b.cluster) == 1 {
-		candidates = []game.Coord{
-			{Row: first.Row - 1, Col: first.Col},
-			{Row: first.Row + 1, Col: first.Col},
-			{Row: first.Row, Col: first.Col - 1},
-			{Row: first.Row, Col: first.Col + 1},
-		}
-	} else {
-		lo, hi := first, first
-		vertical := b.cluster[1].Col == first.Col
-		for _, c := range b.cluster {
-			if vertical {
-				lo.Row = min(lo.Row, c.Row)
-				hi.Row = max(hi.Row, c.Row)
-			} else {
-				lo.Col = min(lo.Col, c.Col)
-				hi.Col = max(hi.Col, c.Col)
-			}
-		}
-		if vertical {
-			candidates = []game.Coord{{Row: lo.Row - 1, Col: lo.Col}, {Row: hi.Row + 1, Col: hi.Col}}
-		} else {
-			candidates = []game.Coord{{Row: lo.Row, Col: lo.Col - 1}, {Row: hi.Row, Col: hi.Col + 1}}
-		}
+	for _, h := range b.cluster {
+		candidates = append(candidates,
+			game.Coord{Row: h.Row - 1, Col: h.Col},
+			game.Coord{Row: h.Row + 1, Col: h.Col},
+			game.Coord{Row: h.Row, Col: h.Col - 1},
+			game.Coord{Row: h.Row, Col: h.Col + 1},
+		)
+	}
+	if len(b.cluster) > 1 {
+		candidates = append(candidates, b.ends()...)
 	}
 
 	open := candidates[:0]
@@ -122,4 +109,22 @@ func (b *Bot) follow() []game.Coord {
 		}
 	}
 	return open
+}
+
+// ends are the two cells continuing the line the cluster has settled into, if it has one.
+func (b *Bot) ends() []game.Coord {
+	first := b.cluster[0]
+	lo, hi := first, first
+	vertical := b.cluster[1].Col == first.Col
+	for _, c := range b.cluster {
+		if vertical && c.Col != first.Col || !vertical && c.Row != first.Row {
+			return nil
+		}
+		lo.Row, hi.Row = min(lo.Row, c.Row), max(hi.Row, c.Row)
+		lo.Col, hi.Col = min(lo.Col, c.Col), max(hi.Col, c.Col)
+	}
+	if vertical {
+		return []game.Coord{{Row: lo.Row - 1, Col: lo.Col}, {Row: hi.Row + 1, Col: hi.Col}}
+	}
+	return []game.Coord{{Row: lo.Row, Col: lo.Col - 1}, {Row: hi.Row, Col: hi.Col + 1}}
 }

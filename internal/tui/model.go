@@ -64,7 +64,7 @@ type Model struct {
 	live bool
 
 	cursor        game.Coord
-	vertical      bool
+	rotation      int
 	bell          bool
 	width, height int
 }
@@ -261,7 +261,7 @@ func (m Model) updatePlaying(key string) (tea.Model, tea.Cmd) {
 func (m Model) updatePlacing(key string) Model {
 	switch key {
 	case "r":
-		m.vertical = !m.vertical
+		m.rotation = (m.rotation + 1) & 3
 	case "R":
 		m.notice = errText(m.sess.AutoPlace())
 	case "enter", " ":
@@ -280,7 +280,7 @@ func (m Model) enter(s *lobby.Session, err error) (tea.Model, tea.Cmd) {
 	}
 	m.sess, m.live = s, false
 	m.screen, m.notice = playing, ""
-	m.cursor, m.vertical = game.Coord{}, false
+	m.cursor, m.rotation = game.Coord{}, 0
 	return m, listen(s)
 }
 
@@ -332,7 +332,7 @@ func (m Model) pending() (game.Ship, bool) {
 	board := m.snap.Game.Board(m.snap.Seat)
 	for _, class := range game.Fleet {
 		if !board.Placed(class) {
-			return game.Ship{Class: class, Origin: m.cursor, Vertical: m.vertical}, true
+			return game.Ship{Class: class, Origin: m.cursor, Rotation: m.rotation}, true
 		}
 	}
 	return game.Ship{}, false

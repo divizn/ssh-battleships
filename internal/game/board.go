@@ -6,10 +6,17 @@ import (
 	"slices"
 )
 
-const (
-	Size       = 10
-	FleetCells = 17
-)
+const Size = 16
+
+// FleetCells is how many cells a full fleet covers, which is what the roster and the win
+// condition count against.
+var FleetCells = func() int {
+	n := 0
+	for _, c := range Fleet {
+		n += len(c.Shape())
+	}
+	return n
+}()
 
 var (
 	ErrOutOfBounds = errors.New("ship or shot outside the board")
@@ -27,16 +34,43 @@ const (
 	Cruiser
 	Submarine
 	Destroyer
+	Corvette
+	Tender
+	Cutter
 )
 
-var Fleet = []ShipClass{Carrier, Battleship, Cruiser, Submarine, Destroyer}
+var Fleet = []ShipClass{Carrier, Battleship, Cruiser, Submarine, Destroyer, Corvette, Tender, Cutter}
 
-func (c ShipClass) Length() int {
-	return [...]int{5, 4, 3, 3, 2}[c]
+// Shape is the class's cells as offsets from the origin, unrotated. Not every ship is a line:
+// Corvette and Cutter are L shaped, Tender is a T.
+func (c ShipClass) Shape() []Coord {
+	return shapes[c]
+}
+
+var shapes = [...][]Coord{
+	Carrier:    line(5),
+	Battleship: line(4),
+	Cruiser:    line(3),
+	Submarine:  line(3),
+	Destroyer:  line(2),
+	Corvette:   {{0, 0}, {1, 0}, {2, 0}, {2, 1}},
+	Tender:     {{0, 0}, {0, 1}, {0, 2}, {1, 1}},
+	Cutter:     {{0, 0}, {1, 0}, {1, 1}},
+}
+
+func line(n int) []Coord {
+	cells := make([]Coord, n)
+	for i := range cells {
+		cells[i] = Coord{Col: i}
+	}
+	return cells
 }
 
 func (c ShipClass) String() string {
-	return [...]string{"Carrier", "Battleship", "Cruiser", "Submarine", "Destroyer"}[c]
+	return [...]string{
+		"Carrier", "Battleship", "Cruiser", "Submarine", "Destroyer",
+		"Corvette", "Tender", "Cutter",
+	}[c]
 }
 
 type Coord struct {
@@ -50,24 +84,37 @@ func (c Coord) Valid() bool {
 type Ship struct {
 	Class    ShipClass
 	Origin   Coord
-	Vertical bool
+	Rotation int
 	Hits     int
 }
 
+// Cells turns the class's shape into board coordinates: rotate a quarter turn at a time, pull
+// the result back into positive space so Origin stays the shape's top-left corner whichever way
+// it faces, then translate.
 func (s Ship) Cells() []Coord {
-	cells := make([]Coord, s.Class.Length())
+	shape := s.Class.Shape()
+	cells := make([]Coord, len(shape))
+	for i, o := range shape {
+		for range s.Rotation & 3 {
+			o = Coord{Row: o.Col, Col: -o.Row}
+		}
+		cells[i] = o
+	}
+	top, left := cells[0].Row, cells[0].Col
+	for _, c := range cells {
+		top, left = min(top, c.Row), min(left, c.Col)
+	}
 	for i := range cells {
-		if s.Vertical {
-			cells[i] = Coord{s.Origin.Row + i, s.Origin.Col}
-		} else {
-			cells[i] = Coord{s.Origin.Row, s.Origin.Col + i}
+		cells[i] = Coord{
+			Row: cells[i].Row - top + s.Origin.Row,
+			Col: cells[i].Col - left + s.Origin.Col,
 		}
 	}
 	return cells
 }
 
 func (s Ship) Sunk() bool {
-	return s.Hits >= s.Class.Length()
+	return s.Hits >= len(s.Class.Shape())
 }
 
 // Halo is the ring of cells around a ship, corners included. No other ship may sit there,
@@ -263,7 +310,7 @@ func scatter(b *Board, class ShipClass, rng *rand.Rand) bool {
 		s := Ship{
 			Class:    class,
 			Origin:   Coord{rng.Intn(Size), rng.Intn(Size)},
-			Vertical: rng.Intn(2) == 0,
+			Rotation: rng.Intn(4),
 		}
 		if b.Place(s) == nil {
 			return true
