@@ -8,6 +8,12 @@ curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-com
   -o /usr/libexec/docker/cli-plugins/docker-compose
 chmod +x /usr/libexec/docker/cli-plugins/docker-compose
 
+# the al2023 docker package ships buildx 0.12.1, older than the compose above will build with
+tag=$(curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest | grep -m1 tag_name | cut -d: -f2 | tr -d ' ",')
+curl -fsSL https://github.com/docker/buildx/releases/download/$tag/buildx-$tag.linux-arm64 \
+  -o /usr/libexec/docker/cli-plugins/docker-buildx
+chmod +x /usr/libexec/docker/cli-plugins/docker-buildx
+
 systemctl enable --now docker
 
 # session manager is the way in, so nothing here needs sshd and the game can have port 22
