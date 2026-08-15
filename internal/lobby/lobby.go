@@ -18,6 +18,10 @@ const codeLetters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
 const codeLength = 4
 
 type Lobby struct {
+	// OnResult is called once per finished game. Set it before the first room opens; nil
+	// simply means results go nowhere, which is how the lobby runs without a database.
+	OnResult Result
+
 	mu    sync.Mutex
 	rooms map[string]*Room
 	rng   *rand.Rand
@@ -51,7 +55,7 @@ func (l *Lobby) open(p Player, bot func(*rand.Rand) *ai.Bot) (*Session, error) {
 	l.mu.Lock()
 	code := l.freeCode()
 	rng := rand.New(rand.NewSource(l.rng.Int63()))
-	room := newRoom(code, p, bot(rng), rng, l.grace, func() { l.forget(code) })
+	room := newRoom(code, p, bot(rng), rng, l.grace, l.OnResult, func() { l.forget(code) })
 	l.rooms[code] = room
 	l.mu.Unlock()
 

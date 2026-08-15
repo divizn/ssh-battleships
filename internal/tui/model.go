@@ -9,6 +9,7 @@ import (
 
 	"github.com/divizn/ssh-battleships/internal/game"
 	"github.com/divizn/ssh-battleships/internal/lobby"
+	"github.com/divizn/ssh-battleships/internal/store"
 )
 
 type screen int
@@ -17,6 +18,7 @@ const (
 	menu screen = iota
 	joining
 	playing
+	naming
 )
 
 type choice int
@@ -29,11 +31,23 @@ const (
 
 var menuItems = []string{"Play the bot", "Create a room", "Join with a code"}
 
+// topPlayers is how many leaderboard places fit beside the menu.
+const topPlayers = 8
+
 // roomGone arrives when the room shuts down under us.
 type roomGone struct{}
 
+// loaded carries what the database knows about this player, or nothing at all when it is
+// unreachable. A game is playable either way, so the error only ever becomes a notice.
+type loaded struct {
+	profile store.Profile
+	top     []store.Entry
+	err     error
+}
+
 type Model struct {
 	lobby *lobby.Lobby
+	db    *store.Store
 	me    lobby.Player
 	st    styles
 
@@ -41,6 +55,9 @@ type Model struct {
 	choice choice
 	typed  string
 	notice string
+
+	profile store.Profile
+	top     []store.Entry
 
 	sess *lobby.Session
 	snap lobby.Snapshot
@@ -52,18 +69,44 @@ type Model struct {
 	width, height int
 }
 
-func New(l *lobby.Lobby, me lobby.Player) Model {
-	return NewWithRenderer(l, me, lipgloss.DefaultRenderer())
+func New(l *lobby.Lobby, db *store.Store, me lobby.Player) Model {
+	return NewWithRenderer(l, db, me, lipgloss.DefaultRenderer())
 }
 
 // NewWithRenderer builds a model that draws through r, which for an SSH session must be the
 // renderer bound to that session rather than the server's own terminal.
-func NewWithRenderer(l *lobby.Lobby, me lobby.Player, r *lipgloss.Renderer) Model {
-	return Model{lobby: l, me: me, st: newStyles(r)}
+func NewWithRenderer(l *lobby.Lobby, db *store.Store, me lobby.Player, r *lipgloss.Renderer) Model {
+	return Model{lobby: l, db: db, me: me, st: newStyles(r)}
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return m.load()
+}
+
+// load fetches the player's record and the leaderboard together, since the menu shows both.
+func (m Model) load() tea.Cmd {
+	if m.db == nil {
+		return nil
+	}
+	db, id := m.db, m.me.ID
+	return func() tea.Msg {
+		profile, err := db.Profile(id)
+		top, topErr := db.Top(topPlayers)
+		if err == nil {
+			err = topErr
+		}
+		return loaded{profile: profile, top: top, err: err}
+	}
+}
+
+func (m Model) saveName(name string) tea.Cmd {
+	db, id := m.db, m.me.ID
+	return func() tea.Msg {
+		if err := db.SetName(id, name); err != nil {
+			return loaded{profile: store.Profile{Name: name}, err: err}
+		}
+		return nil
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -78,7 +121,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, listen(m.sess)
 
 	case roomGone:
-		return m.leave("That room has closed."), nil
+		return m.leave("That room has closed.")
+
+	case loaded:
+		return m.settle(msg), nil
 
 	case tea.KeyMsg:
 		m.bell = false
@@ -91,9 +137,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateMenu(msg.String())
 		case joining:
 			return m.updateJoining(msg.String())
+		case naming:
+			return m.updateNaming(msg.String())
 		default:
 			return m.updatePlaying(msg.String())
 		}
+	}
+	return m, nil
+}
+
+// settle takes what the database returned. A player with no name stored has never been here
+// before, so they are asked for one.
+func (m Model) settle(msg loaded) Model {
+	if msg.err != nil {
+		m.notice = "Scores are unavailable right now."
+		return m
+	}
+	m.profile, m.top = msg.profile, msg.top
+	if msg.profile.Name != "" {
+		m.me.Name = msg.profile.Name
+		return m
+	}
+	if m.screen == menu && m.db.Tracks(m.me.ID) {
+		m.screen, m.typed, m.notice = naming, m.me.Name, ""
+	}
+	return m
+}
+
+func (m Model) updateNaming(key string) (tea.Model, tea.Cmd) {
+	switch {
+	case key == "backspace":
+		if m.typed != "" {
+			m.typed = m.typed[:len(m.typed)-1]
+		}
+	case key == "enter":
+		name := lobby.CleanName(m.typed)
+		if name == "" {
+			m.notice = "Pick something with a letter or two in it."
+			return m, nil
+		}
+		m.me.Name, m.profile.Name = name, name
+		m.screen, m.typed, m.notice = menu, "", ""
+		return m, m.saveName(name)
+	case len(key) == 1 && len(m.typed) < lobby.NameLimit:
+		m.typed += key
 	}
 	return m, nil
 }
@@ -144,7 +231,7 @@ func (m Model) updatePlaying(key string) (tea.Model, tea.Cmd) {
 	case "q":
 		return m, m.quit()
 	case "esc":
-		return m.leave(""), nil
+		return m.leave("")
 	}
 	if !m.live {
 		return m, nil
@@ -165,7 +252,7 @@ func (m Model) updatePlaying(key string) (tea.Model, tea.Cmd) {
 		}
 	case lobby.Over:
 		if key == "n" {
-			return m.leave(""), nil
+			return m.leave("")
 		}
 	}
 	return m, nil
@@ -197,15 +284,16 @@ func (m Model) enter(s *lobby.Session, err error) (tea.Model, tea.Cmd) {
 	return m, listen(s)
 }
 
-// leave drops the room but keeps the connection, so a player can start another game.
-func (m Model) leave(notice string) Model {
+// leave drops the room but keeps the connection, so a player can start another game. The
+// reload picks up whatever that game just did to their record.
+func (m Model) leave(notice string) (Model, tea.Cmd) {
 	if m.sess != nil {
 		m.sess.Close()
 		m.sess = nil
 	}
 	m.live, m.screen, m.notice = false, menu, notice
 	m.snap = lobby.Snapshot{}
-	return m
+	return m, m.load()
 }
 
 func (m Model) quit() tea.Cmd {

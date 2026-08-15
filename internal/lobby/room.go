@@ -75,40 +75,46 @@ type sub struct {
 }
 
 type room struct {
-	pub     *Room
-	game    game.Game
-	phase   Phase
-	seats   [2]Player
-	taken   [2]bool
-	subs    []sub
-	bot     *ai.Bot
-	rng     *rand.Rand
-	last    [2]Shot
-	winner  game.Player
-	forfeit bool
-	away    [2]bool
-	awayAt  [2]time.Time
-	timers  [2]*time.Timer
-	grace   time.Duration
-	expire  chan game.Player
-	onClose func()
-	done    bool
+	pub      *Room
+	game     game.Game
+	phase    Phase
+	seats    [2]Player
+	taken    [2]bool
+	subs     []sub
+	bot      *ai.Bot
+	rng      *rand.Rand
+	last     [2]Shot
+	winner   game.Player
+	forfeit  bool
+	away     [2]bool
+	awayAt   [2]time.Time
+	timers   [2]*time.Timer
+	grace    time.Duration
+	expire   chan game.Player
+	onClose  func()
+	onResult Result
+	done     bool
 }
 
-func newRoom(code string, host Player, bot *ai.Bot, rng *rand.Rand, grace time.Duration, onClose func()) *Room {
+// Result is told who won a finished game. Ranked is false for bot games, which still count
+// towards a player's own record. It runs off the actor goroutine, so it may block.
+type Result func(winner, loser Player, ranked bool)
+
+func newRoom(code string, host Player, bot *ai.Bot, rng *rand.Rand, grace time.Duration, onResult Result, onClose func()) *Room {
 	pub := &Room{
 		Code:   code,
 		cmds:   make(chan func(*room)),
 		closed: make(chan struct{}),
 	}
 	rm := &room{
-		pub:     pub,
-		phase:   Waiting,
-		bot:     bot,
-		rng:     rng,
-		grace:   grace,
-		expire:  make(chan game.Player, 2),
-		onClose: onClose,
+		pub:      pub,
+		phase:    Waiting,
+		bot:      bot,
+		rng:      rng,
+		grace:    grace,
+		expire:   make(chan game.Player, 2),
+		onResult: onResult,
+		onClose:  onClose,
 	}
 	rm.seats[game.P1], rm.taken[game.P1] = host, true
 	if bot != nil {
@@ -220,6 +226,7 @@ func (rm *room) timeout(seat game.Player) {
 	rm.phase = Over
 	rm.winner = seat.Other()
 	rm.forfeit = true
+	rm.report()
 	rm.broadcast()
 	rm.reap()
 }
@@ -293,6 +300,17 @@ func (rm *room) botTurn() {
 func (rm *room) finish() {
 	rm.phase = Over
 	rm.winner = rm.game.Winner
+	rm.report()
+}
+
+// report hands the result off in its own goroutine: writing it out is somebody else's
+// network call and the actor must not sit and wait for it.
+func (rm *room) report() {
+	if rm.onResult == nil {
+		return
+	}
+	winner, loser, ranked := rm.seats[rm.winner], rm.seats[rm.winner.Other()], rm.bot == nil
+	go rm.onResult(winner, loser, ranked)
 }
 
 func (rm *room) snapshot(seat game.Player) Snapshot {

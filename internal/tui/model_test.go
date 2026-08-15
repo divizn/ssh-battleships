@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/divizn/ssh-battleships/internal/game"
 	"github.com/divizn/ssh-battleships/internal/lobby"
+	"github.com/divizn/ssh-battleships/internal/store"
 )
 
 var specials = map[string]tea.KeyType{
@@ -57,7 +59,28 @@ func settle(t *testing.T, m tea.Model) tea.Model {
 }
 
 func newModel(l *lobby.Lobby, name string) tea.Model {
-	return New(l, lobby.Player{ID: "key-" + name, Name: name})
+	return New(l, nil, lobby.Player{ID: "key-" + name, Name: name})
+}
+
+// known is a model for a player Redis would recognise. The store is never actually reached:
+// these tests hand the model the answers a lookup would have produced.
+func known(l *lobby.Lobby) Model {
+	db := store.New("http://redis.invalid", "token")
+	return New(l, db, lobby.Player{ID: "SHA256:tester", Name: "sshname"})
+}
+
+// fullBoard is the widest leaderboard the pane ever has to hold.
+var fullBoard = loaded{
+	profile: store.Profile{Name: "Tester", Wins: 12, Losses: 3, Games: 15},
+	top:     board(topPlayers),
+}
+
+func board(n int) []store.Entry {
+	entries := make([]store.Entry, n)
+	for i := range entries {
+		entries[i] = store.Entry{Name: strings.Repeat("W", lobby.NameLimit), Wins: 999 - i}
+	}
+	return entries
 }
 
 // botGame walks the menu into a bot game with both fleets down.
@@ -213,10 +236,12 @@ func TestCodeEntryTakesFourLettersAndBackspace(t *testing.T) {
 func TestFrameKeepsOneSizeOnEveryScreen(t *testing.T) {
 	l := lobby.New()
 	frames := map[string]string{
-		"menu":    newModel(l, "Tester").View(),
-		"joining": press(newModel(l, "Tester"), "down", "down", "enter").View(),
-		"waiting": settle(t, press(newModel(l, "Tester"), "down", "enter")).View(),
-		"playing": botGame(t).View(),
+		"menu":        newModel(l, "Tester").View(),
+		"joining":     press(newModel(l, "Tester"), "down", "down", "enter").View(),
+		"waiting":     settle(t, press(newModel(l, "Tester"), "down", "enter")).View(),
+		"playing":     botGame(t).View(),
+		"naming":      known(l).settle(loaded{}).View(),
+		"leaderboard": known(l).settle(fullBoard).View(),
 	}
 
 	want := frames["menu"]
@@ -238,6 +263,73 @@ func TestSmallTerminalAsksForAResize(t *testing.T) {
 		t.Errorf("view in a 40x12 window did not ask for a resize:\n%s", m.View())
 	}
 }
+
+func TestAPlayerWithNoStoredNameIsAskedForOne(t *testing.T) {
+	m := known(lobby.New()).settle(loaded{})
+
+	if m.screen != naming {
+		t.Fatalf("screen = %v, want the name prompt", m.screen)
+	}
+	if m.typed != "sshname" {
+		t.Errorf("prompt starts at %q, want the ssh username offered as a default", m.typed)
+	}
+
+	after := press(m, "\x1b", "[", "3", "1", "m", "!", "enter").(Model)
+	if after.screen != menu {
+		t.Fatalf("screen = %v after naming, want the menu", after.screen)
+	}
+	if after.me.Name != "sshname31m" {
+		t.Errorf("name = %q, want the escape sequence stripped out of it", after.me.Name)
+	}
+	if !strings.Contains(after.View(), "Playing as sshname31m") {
+		t.Errorf("the menu does not greet the new name:\n%s", after.View())
+	}
+}
+
+func TestAKnownPlayerGoesStraightToTheMenuWithTheirRecord(t *testing.T) {
+	m := known(lobby.New()).settle(loaded{profile: store.Profile{Name: "Ada", Wins: 3, Losses: 1, Games: 4}})
+
+	if m.screen != menu {
+		t.Fatalf("screen = %v, want the menu", m.screen)
+	}
+	view := m.View()
+	for _, want := range []string{"Playing as Ada", "3 won", "1 lost", "4 games"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("menu is missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestTheLeaderboardIsOnTheMenuWhenThereIsOne(t *testing.T) {
+	l := lobby.New()
+	if strings.Contains(known(l).settle(loaded{profile: store.Profile{Name: "Ada"}}).View(), "LEADERBOARD") {
+		t.Error("an empty leaderboard was drawn anyway")
+	}
+
+	view := known(l).settle(fullBoard).View()
+	if !strings.Contains(view, "LEADERBOARD") {
+		t.Fatalf("the leaderboard is missing:\n%s", view)
+	}
+	if got := strings.Count(view, "999"); got != 1 {
+		t.Errorf("the top score appears %d times, want once:\n%s", got, view)
+	}
+	if !strings.Contains(view, "Play the bot") {
+		t.Error("the leaderboard pushed the menu off the pane")
+	}
+}
+
+func TestAnUnreachableStoreStillLetsYouPlay(t *testing.T) {
+	m := known(lobby.New()).settle(loaded{err: errUnreachable})
+
+	if m.screen != menu {
+		t.Errorf("screen = %v, want the menu even with no database", m.screen)
+	}
+	if !strings.Contains(m.View(), "Playing as sshname") {
+		t.Errorf("the ssh username was not used as a fallback:\n%s", m.View())
+	}
+}
+
+var errUnreachable = errors.New("dial tcp: no such host")
 
 func TestLeavingAGameReturnsToTheMenu(t *testing.T) {
 	m := press(botGame(t), "esc").(Model)

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,8 @@ func (m Model) pane() string {
 	switch {
 	case m.screen == menu:
 		content = m.menuPane()
+	case m.screen == naming:
+		content = m.namePane()
 	case m.screen == joining:
 		content = m.joinPane()
 	case !m.live || m.snap.Phase == lobby.Waiting:
@@ -75,7 +78,7 @@ func enemyHeading(snap lobby.Snapshot) string {
 }
 
 func (m Model) menuPane() string {
-	rows := []string{m.st.heading.Render("Playing as " + m.me.Name), ""}
+	rows := []string{m.st.heading.Render("Playing as " + m.me.Name), m.st.dim.Render(m.record()), ""}
 	for i, item := range menuItems {
 		if choice(i) == m.choice {
 			rows = append(rows, m.st.chosen.Render("  > "+item))
@@ -83,7 +86,43 @@ func (m Model) menuPane() string {
 		}
 		rows = append(rows, m.st.unchosen.Render("    "+item))
 	}
+	left := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	if len(m.top) == 0 {
+		return left
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, m.st.column.Render(left), gap, m.board())
+}
+
+// record is this player's own tally, bot games included. It stays blank for a session
+// nothing is being kept for, rather than claiming a record of nought.
+func (m Model) record() string {
+	if !m.db.Tracks(m.me.ID) {
+		return ""
+	}
+	if m.profile.Games == 0 {
+		return "No games played yet."
+	}
+	return fmt.Sprintf("%d won · %d lost · %s", m.profile.Wins, m.profile.Losses, plural(m.profile.Games, "game"))
+}
+
+// board is the leaderboard, which counts wins against people only.
+func (m Model) board() string {
+	rows := []string{m.st.heading.Render("LEADERBOARD"), ""}
+	for i, e := range m.top {
+		rows = append(rows, fmt.Sprintf("%s %-*s %s",
+			m.st.dim.Render(fmt.Sprintf("%d.", i+1)), lobby.NameLimit, e.Name, m.st.code.Render(strconv.Itoa(e.Wins))))
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func (m Model) namePane() string {
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.st.heading.Render("What should the fleet call you?"),
+		"",
+		"  "+m.st.code.Render(m.typed)+m.st.prompt.Render("_"),
+		"",
+		m.st.dim.Render(fmt.Sprintf("  Letters, digits and spaces, up to %d of them.", lobby.NameLimit)),
+	)
 }
 
 func (m Model) joinPane() string {
@@ -223,6 +262,8 @@ func (m Model) headline() string {
 	switch {
 	case m.screen == menu:
 		return "Pick a game."
+	case m.screen == naming:
+		return "First time here. Pick a name other players will see."
 	case m.screen == joining:
 		return "Type the four letters your friend was given."
 	case !m.live:
@@ -314,6 +355,8 @@ func (m Model) help() string {
 	switch {
 	case m.screen == menu:
 		return "up/down choose · enter start · q quit"
+	case m.screen == naming:
+		return "type a name · enter save"
 	case m.screen == joining:
 		return "type four letters · enter join · esc back"
 	case !m.live:

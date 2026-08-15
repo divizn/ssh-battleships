@@ -17,6 +17,7 @@ import (
 
 	"github.com/divizn/ssh-battleships/internal/lobby"
 	"github.com/divizn/ssh-battleships/internal/server"
+	"github.com/divizn/ssh-battleships/internal/store"
 	"github.com/divizn/ssh-battleships/internal/tui"
 )
 
@@ -33,13 +34,24 @@ func main() {
 }
 
 func run(addr, hostKey string, local bool) error {
+	db := store.New(os.Getenv("UPSTASH_REDIS_REST_URL"), os.Getenv("UPSTASH_REDIS_REST_TOKEN"))
+	if db == nil {
+		fmt.Fprintln(os.Stderr, "no redis configured, names and scores will not be kept")
+	}
+
 	games := lobby.New()
+	games.OnResult = func(winner, loser lobby.Player, ranked bool) {
+		if err := db.Record(winner.ID, loser.ID, ranked); err != nil {
+			fmt.Fprintln(os.Stderr, "recording result:", err)
+		}
+	}
+
 	if local {
-		_, err := tea.NewProgram(tui.New(games, me()), tea.WithAltScreen()).Run()
+		_, err := tea.NewProgram(tui.New(games, db, me()), tea.WithAltScreen()).Run()
 		return err
 	}
 
-	s, err := server.New(addr, hostKey, games)
+	s, err := server.New(addr, hostKey, games, db)
 	if err != nil {
 		return err
 	}
@@ -71,7 +83,7 @@ func run(addr, hostKey string, local bool) error {
 func me() lobby.Player {
 	name := "player"
 	if u, err := user.Current(); err == nil && u.Username != "" {
-		name = u.Username
+		name = lobby.CleanName(u.Username)
 	}
 	return lobby.Player{ID: "local", Name: name}
 }
