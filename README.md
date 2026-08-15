@@ -7,6 +7,11 @@ The page is rendered per request so the leaderboard is live, with a 60 second ca
 it. It reads the same Upstash database the game writes to, under the `battleships:` namespace,
 and renders without a leaderboard if Redis is missing or unreachable.
 
+The game server does not run all week. It writes `battleships:live` every minute with a 150
+second expiry, which is what the badge at the top of the page reads, so the badge can lag reality
+by up to a minute of page cache. The scheduled hours are one sentence in `index.astro`; the
+schedule itself lives in EventBridge, in the game's own repo.
+
 ```sh
 pnpm install
 pnpm dev       # needs .dev.vars, below
