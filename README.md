@@ -29,4 +29,4 @@ wrangler secret put UPSTASH_REDIS_REST_TOKEN
 ```
 
 `battleships.phons.dev` is a normal proxied Cloudflare record. `play.phons.dev`, which points at
-the Fly machine running the game, must stay DNS-only: the proxy does not carry SSH.
+the droplet running the game, must stay DNS-only: the proxy does not carry SSH.
