@@ -25,7 +25,7 @@ const boards = [
   },
   {
     title: "All wins",
-    blurb: "Every win, the bot included.",
+    blurb: "Total wins (including against AI).",
     entries: overall,
     empty: "No wins recorded yet.",
   },
@@ -196,14 +196,16 @@ const description =
 
           <section class="mt-16">
             <h2 class="font-display text-2xl">Rules</h2>
-            <ul class="mt-4 flex flex-col gap-2 text-muted-foreground">
+            <ol
+              class="mt-4 flex list-decimal flex-col gap-2 pl-5 text-muted-foreground marker:animate-text-glow marker:text-foreground"
+            >
               <li>Two 16x16 grids and a fleet of eight ships, 28 cells in total.</li>
               <li>Ships may not touch, corners included.</li>
               <li>Not every ship is a line: two are L shaped and one is a T.</li>
               <li>Turns alternate strictly. A hit does not earn another shot.</li>
               <li>Sinking a ship reveals the water around it.</li>
               <li>Sink all 28 cells to win.</li>
-            </ul>
+            </ol>
             <ul class="mt-6 grid grid-cols-2 gap-2 font-mono text-sm sm:grid-cols-4">
               {
                 fleet.map(([name, shape]) => (
