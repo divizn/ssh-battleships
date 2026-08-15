@@ -4,6 +4,8 @@ Battleships played over SSH: `ssh play.phons.dev`. Play the bot, or create a roo
 friend the four-letter code. Your public key fingerprint is your account, so there is nothing to
 sign up for and nothing to install.
 
+![a full game played in the terminal](https://cdn.phons.dev/battleships.gif)
+
 ```
 cmd/ internal/   the game
 www/             the landing page at battleships.phons.dev, Astro on Cloudflare Workers
