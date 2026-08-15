@@ -97,13 +97,30 @@ const description =
                 Battleships
               </h1>
               <p
-                class="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs text-muted-foreground"
+                class="group relative flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs text-muted-foreground"
               >
                 <span
                   aria-hidden="true"
                   class:list={["h-2 w-2 rounded-full", live ? "animate-pulse bg-live" : "bg-miss"]}
                 ></span>
                 {live ? "server up" : "server asleep"}
+                <button
+                  type="button"
+                  aria-label="When is the server up?"
+                  aria-describedby="hours-tip"
+                  class="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-border-strong text-[10px] duration-200 hover:border-foreground/40 hover:text-foreground"
+                >
+                  ?
+                </button>
+                <span
+                  id="hours-tip"
+                  role="tooltip"
+                  class="pointer-events-none absolute top-full left-0 z-10 mt-2 w-64 rounded-md border border-border bg-card px-3 py-2 text-xs leading-relaxed text-muted-foreground opacity-0 shadow-lg duration-200 group-hover:opacity-100 group-focus-within:opacity-100"
+                >
+                  {hours} Outside them the machine is stopped, so the address will not answer at all.
+                  The badge is a heartbeat the server writes every minute, so it follows reality
+                  rather than the schedule.
+                </span>
               </p>
             </div>
 
