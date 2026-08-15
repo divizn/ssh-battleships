@@ -1,0 +1,214 @@
+---
+import "@/styles/global.css";
+import { isLive, top, type Entry } from "@/lib/leaderboard";
+
+export const prerender = false;
+
+let board: Entry[] = [];
+let live = false;
+let down = false;
+try {
+  [board, live] = await Promise.all([top(10), isLive()]);
+} catch (err) {
+  console.error("redis:", err);
+  down = true;
+}
+
+// the hours the server is scheduled for, one sentence to edit when they change
+const hours = "It is up on Friday, Saturday and Sunday, 6pm to 11pm UK time.";
+
+Astro.response.headers.set("cache-control", "public, max-age=60");
+
+const command = "ssh play.phons.dev";
+
+const fleet = [
+  ["Carrier", 5],
+  ["Battleship", 4],
+  ["Cruiser", 3],
+  ["Submarine", 3],
+  ["Destroyer", 2],
+] as const;
+
+// a firing view mid-game, drawn with the glyphs the real board uses
+const preview = [
+  "· · · · · · · · · ·",
+  "· · × X X X × · · ·",
+  "· · × × × × × · · ·",
+  "· o · · · · · · · ·",
+  "· · · · · X · · o ·",
+  "· · · · · X · · · ·",
+  "· · o · · · · · · ·",
+  "· · · · · · · o · ·",
+  "· X X · · · · · · ·",
+  "· · · · · o · · · ·",
+];
+
+const title = "Battleships over SSH";
+const description =
+  "Battleships in your terminal. One ssh command, no signup: play the bot or a friend with a room code.";
+---
+
+<html lang="en" class="bg-background">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+  </head>
+  <body class="antialiased">
+    <main class="mx-auto flex max-w-3xl flex-col gap-16 px-6 py-20 sm:py-28">
+      <header class="animate-fade-in flex flex-col gap-6">
+        <div class="flex flex-wrap items-center gap-4">
+          <h1 class="font-display text-5xl tracking-tight sm:text-6xl">Battleships</h1>
+          <p
+            class="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs text-muted-foreground"
+          >
+            <span
+              aria-hidden="true"
+              class:list={[
+                "h-2 w-2 rounded-full",
+                live ? "animate-pulse bg-live" : "bg-miss",
+              ]}></span>
+            {live ? "server up" : "server asleep"}
+          </p>
+        </div>
+        <p class="max-w-xl text-lg text-muted-foreground">
+          Played in your terminal, over SSH. No signup, no client to install: your public key is
+          your account.
+        </p>
+
+        <div
+          class="flex w-fit items-center gap-4 rounded-lg border border-border bg-card px-5 py-4 font-mono text-lg"
+        >
+          <span aria-hidden="true" class="text-muted-foreground">$</span>
+          <code id="command">{command}</code>
+          <span aria-hidden="true" class="animate-blink text-muted-foreground">▌</span>
+          <button
+            id="copy"
+            type="button"
+            data-command={command}
+            class="ml-2 cursor-pointer rounded-md border border-border px-3 py-1 text-sm text-muted-foreground transition hover:border-border-strong hover:text-foreground"
+          >
+            copy
+          </button>
+        </div>
+
+        {
+          !live && (
+            <p class="text-sm text-muted-foreground">
+              The server is asleep, so that command will not connect right now. {hours}
+            </p>
+          )
+        }
+      </header>
+
+      <section class="flex flex-col gap-4">
+        <h2 class="font-display text-2xl">The board</h2>
+        <div class="flex flex-col gap-6 sm:flex-row sm:items-start">
+          <pre
+            class="overflow-x-auto rounded-lg border border-border bg-card p-5 font-mono text-sm leading-relaxed"
+            aria-label="a game in progress">{
+              preview.map((row) => (
+                <div>
+                  {[...row].map((glyph) => (
+                    <span
+                      class={
+                        glyph === "X" ? "text-hit" : glyph === "·" ? "text-miss" : undefined
+                      }>
+                      {glyph}
+                    </span>
+                  ))}
+                </div>
+              ))
+            }</pre>
+          <dl class="flex flex-col gap-2 font-mono text-sm text-muted-foreground">
+            <div class="flex gap-3"><dt class="w-4 text-hit">X</dt><dd>hit</dd></div>
+            <div class="flex gap-3"><dt class="w-4">o</dt><dd>miss</dd></div>
+            <div class="flex gap-3"><dt class="w-4">×</dt><dd>water around a sunk ship</dd></div>
+            <div class="flex gap-3"><dt class="w-4">·</dt><dd>unknown</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-4">
+        <h2 class="font-display text-2xl">Rules</h2>
+        <ul class="flex flex-col gap-2 text-muted-foreground">
+          <li>Two 10x10 grids and a fleet of five ships, 17 cells in total.</li>
+          <li>Ships may not touch, corners included.</li>
+          <li>Turns alternate strictly. A hit does not earn another shot.</li>
+          <li>Sinking a ship reveals the water around it.</li>
+          <li>Sink all 17 cells to win.</li>
+        </ul>
+        <ul class="mt-2 grid grid-cols-2 gap-2 font-mono text-sm sm:grid-cols-5">
+          {
+            fleet.map(([name, length]) => (
+              <li class="rounded-md border border-border bg-card px-3 py-2">
+                <span class="block text-foreground">{name}</span>
+                <span class="text-muted-foreground">{"#".repeat(length)}</span>
+              </li>
+            ))
+          }
+        </ul>
+      </section>
+
+      <section class="flex flex-col gap-4">
+        <h2 class="font-display text-2xl">Playing</h2>
+        <ul class="flex flex-col gap-2 text-muted-foreground">
+          <li>Play the bot, or create a room and give a friend the four-letter code.</li>
+          <li>
+            Arrow keys move, <span class="font-mono text-foreground">r</span> rotates,
+            <span class="font-mono text-foreground">enter</span> places or fires, and
+            <span class="font-mono text-foreground">R</span> auto-places the rest of your fleet.
+          </li>
+          <li>Drop out mid-game and you have 60 seconds to reconnect before you forfeit.</li>
+          <li>Wins against people count on the leaderboard. Wins against the bot do not.</li>
+        </ul>
+      </section>
+
+      <section class="flex flex-col gap-4">
+        <h2 class="font-display text-2xl">Leaderboard</h2>
+        {
+          down ? (
+            <p class="text-muted-foreground">The leaderboard is unreachable right now.</p>
+          ) : board.length === 0 ? (
+            <p class="text-muted-foreground">Nobody has won a ranked game yet. Go first.</p>
+          ) : (
+            <ol class="flex flex-col divide-y divide-border rounded-lg border border-border bg-card font-mono text-sm">
+              {board.map((entry, i) => (
+                <li class="flex items-center gap-4 px-5 py-3">
+                  <span class="w-6 text-muted-foreground">{i + 1}</span>
+                  <span class="flex-1">{entry.name}</span>
+                  <span class="text-muted-foreground">
+                    {entry.wins} {entry.wins === 1 ? "win" : "wins"}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )
+        }
+      </section>
+
+      <footer class="border-t border-border pt-8 text-sm text-muted-foreground">
+        <a href="https://phons.dev" class="transition hover:text-foreground">phons.dev</a>
+        <span aria-hidden="true" class="px-2">/</span>
+        <a
+          href="https://github.com/divizn/ssh-battleships"
+          class="transition hover:text-foreground">source</a
+        >
+      </footer>
+    </main>
+
+    <script>
+      const button = document.getElementById("copy") as HTMLButtonElement | null;
+      button?.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(button.dataset.command ?? "");
+        button.textContent = "copied";
+        setTimeout(() => (button.textContent = "copy"), 1500);
+      });
+    </script>
+  </body>
+</html>
