@@ -17,7 +17,8 @@ chmod +x /usr/libexec/docker/cli-plugins/docker-buildx
 systemctl enable --now docker
 
 # session manager is the way in, so nothing here needs sshd and the game can have port 22
-systemctl disable --now sshd
+# masked rather than disabled, because cloud-init starts sshd again on every boot
+systemctl mask --now sshd.service sshd.socket
 
 # 512MB runs the game but will not compile it
 dd if=/dev/zero of=/swapfile bs=1M count=2048
