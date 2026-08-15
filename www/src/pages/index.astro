@@ -1,5 +1,5 @@
 ---
-import "@/styles/global.css";
+import BaseLayout from "@/layouts/BaseLayout.astro";
 import { isLive, top, type Entry } from "@/lib/leaderboard";
 
 export const prerender = false;
@@ -55,143 +55,134 @@ const preview = [
 const tone = (glyph: string) =>
   glyph === "X" ? "text-hit" : glyph === "o" ? "text-muted-foreground" : "text-miss";
 
+const legend = [
+  ["X", "hit"],
+  ["o", "miss"],
+  ["×", "water around a sunk ship"],
+  ["·", "unknown"],
+] as const;
+
 const title = "Battleships over SSH";
 const description =
   "Battleships in your terminal. One ssh command, no signup: play the bot or a friend with a room code.";
 ---
 
-<html lang="en" class="bg-background">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
-    <meta name="description" content={description} />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
-  </head>
-  <body class="antialiased">
-    <main class="mx-auto flex max-w-3xl flex-col gap-16 px-6 py-20 sm:py-28">
-      <header class="animate-fade-in flex flex-col gap-6">
-        <div class="flex flex-wrap items-center gap-4">
-          <h1 class="font-display text-5xl tracking-tight sm:text-6xl">Battleships</h1>
-          <p
-            class="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs text-muted-foreground"
-          >
-            <span
-              aria-hidden="true"
-              class:list={[
-                "h-2 w-2 rounded-full",
-                live ? "animate-pulse bg-live" : "bg-miss",
-              ]}></span>
-            {live ? "server up" : "server asleep"}
-          </p>
-        </div>
-        <p class="max-w-xl text-lg text-muted-foreground">
-          Played in your terminal, over SSH. No signup, no client to install: your public key is
-          your account.
-        </p>
-
-        <div
-          class="flex w-fit items-center gap-4 rounded-lg border border-border bg-card px-5 py-4 font-mono text-lg"
+<BaseLayout title={title} description={description}>
+  <main class="mx-auto max-w-4xl px-6 py-24">
+    <section class="animate-fade-in">
+      <div class="flex flex-wrap items-center gap-4">
+        <h1 class="font-display animate-title-glow text-4xl text-foreground sm:text-5xl">
+          Battleships
+        </h1>
+        <p
+          class="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs text-muted-foreground"
         >
-          <span aria-hidden="true" class="text-muted-foreground">$</span>
-          <code id="command">{command}</code>
-          <span aria-hidden="true" class="animate-blink text-muted-foreground">▌</span>
-          <button
-            id="copy"
-            type="button"
-            data-command={command}
-            class="ml-2 cursor-pointer rounded-md border border-border px-3 py-1 text-sm text-muted-foreground transition hover:border-border-strong hover:text-foreground"
-          >
-            copy
-          </button>
-        </div>
+          <span
+            aria-hidden="true"
+            class:list={["h-2 w-2 rounded-full", live ? "animate-pulse bg-live" : "bg-miss"]}
+          ></span>
+          {live ? "server up" : "server asleep"}
+        </p>
+      </div>
 
-        {
-          !live && (
-            <p class="text-sm text-muted-foreground">
-              The server is asleep, so that command will not connect right now. {hours}
-            </p>
-          )
-        }
-      </header>
+      <p class="mt-4 max-w-xl text-muted-foreground">
+        Played in your terminal, over SSH. No signup, no client to install: your public key is
+        your account.
+      </p>
 
-      <section class="flex flex-col gap-4">
-        <h2 class="font-display text-2xl">The board</h2>
-        <div class="flex flex-col gap-6 sm:flex-row sm:items-start">
-          <div
-            role="img"
-            aria-label="a game in progress"
-            class="grid w-fit grid-cols-16 gap-x-2 gap-y-1 rounded-lg border border-border bg-card p-5 font-mono text-sm"
-          >
-            {
-              [...preview.join("")].map((glyph) => (
-                <span class:list={["text-center", tone(glyph)]}>{glyph}</span>
-              ))
-            }
-          </div>
-          <dl class="flex flex-col gap-2 font-mono text-sm text-muted-foreground">
-            {
-              (
-                [
-                  ["X", "hit"],
-                  ["o", "miss"],
-                  ["×", "water around a sunk ship"],
-                  ["·", "unknown"],
-                ] as const
-              ).map(([glyph, meaning]) => (
-                <div class="flex gap-3">
-                  <dt class:list={["w-4 text-center", tone(glyph)]}>{glyph}</dt>
-                  <dd>{meaning}</dd>
-                </div>
-              ))
-            }
-          </dl>
-        </div>
-      </section>
+      <div
+        class="mt-8 flex w-fit items-center gap-4 rounded-lg border border-border bg-card px-5 py-4 font-mono text-lg"
+      >
+        <span aria-hidden="true" class="text-muted-foreground">$</span>
+        <code id="command">{command}</code>
+        <span aria-hidden="true" class="animate-blink text-muted-foreground">▌</span>
+        <button
+          id="copy"
+          type="button"
+          data-command={command}
+          class="ml-2 cursor-pointer rounded-md border border-border px-3 py-1 text-sm text-muted-foreground duration-200 hover:border-foreground/40 hover:text-foreground"
+        >
+          copy
+        </button>
+      </div>
 
-      <section class="flex flex-col gap-4">
-        <h2 class="font-display text-2xl">Rules</h2>
-        <ul class="flex flex-col gap-2 text-muted-foreground">
-          <li>Two 16x16 grids and a fleet of eight ships, 28 cells in total.</li>
-          <li>Ships may not touch, corners included.</li>
-          <li>Not every ship is a line: two are L shaped and one is a T.</li>
-          <li>Turns alternate strictly. A hit does not earn another shot.</li>
-          <li>Sinking a ship reveals the water around it.</li>
-          <li>Sink all 28 cells to win.</li>
-        </ul>
-        <ul class="mt-2 grid grid-cols-2 gap-2 font-mono text-sm sm:grid-cols-4">
+      {
+        !live && (
+          <p class="mt-4 text-sm text-muted-foreground">
+            The server is asleep, so that command will not connect right now. {hours}
+          </p>
+        )
+      }
+    </section>
+
+    <section class="mt-16">
+      <h2 class="font-display text-2xl">The board</h2>
+      <div class="mt-4 flex flex-col gap-6 sm:flex-row sm:items-start">
+        <div
+          role="img"
+          aria-label="a game in progress"
+          class="grid w-fit grid-cols-16 gap-x-2 gap-y-1 rounded-lg border border-border bg-card p-5 font-mono text-sm"
+        >
           {
-            fleet.map(([name, shape]) => (
-              <li class="rounded-md border border-border bg-card px-3 py-2">
-                <span class="block text-foreground">{name}</span>
-                {shape.map((row) => (
-                  <span class="block text-muted-foreground">{row}</span>
-                ))}
-              </li>
+            [...preview.join("")].map((glyph) => (
+              <span class:list={["text-center", tone(glyph)]}>{glyph}</span>
             ))
           }
-        </ul>
-      </section>
+        </div>
+        <dl class="flex flex-col gap-2 font-mono text-sm text-muted-foreground">
+          {
+            legend.map(([glyph, meaning]) => (
+              <div class="flex gap-3">
+                <dt class:list={["w-4 text-center", tone(glyph)]}>{glyph}</dt>
+                <dd>{meaning}</dd>
+              </div>
+            ))
+          }
+        </dl>
+      </div>
+    </section>
 
-      <section class="flex flex-col gap-4">
-        <h2 class="font-display text-2xl">Playing</h2>
-        <ul class="flex flex-col gap-2 text-muted-foreground">
-          <li>Play the bot, or create a room and give a friend the four-letter code.</li>
-          <li>
-            Arrow keys move, <span class="font-mono text-foreground">r</span> rotates,
-            <span class="font-mono text-foreground">enter</span> places or fires, and
-            <span class="font-mono text-foreground">R</span> auto-places the rest of your fleet.
-          </li>
-          <li>Drop out mid-game and you have 60 seconds to reconnect before you forfeit.</li>
-          <li>Wins against people count on the leaderboard. Wins against the bot do not.</li>
-        </ul>
-      </section>
+    <section class="mt-16">
+      <h2 class="font-display text-2xl">Rules</h2>
+      <ul class="mt-4 flex flex-col gap-2 text-muted-foreground">
+        <li>Two 16x16 grids and a fleet of eight ships, 28 cells in total.</li>
+        <li>Ships may not touch, corners included.</li>
+        <li>Not every ship is a line: two are L shaped and one is a T.</li>
+        <li>Turns alternate strictly. A hit does not earn another shot.</li>
+        <li>Sinking a ship reveals the water around it.</li>
+        <li>Sink all 28 cells to win.</li>
+      </ul>
+      <ul class="mt-6 grid grid-cols-2 gap-2 font-mono text-sm sm:grid-cols-4">
+        {
+          fleet.map(([name, shape]) => (
+            <li class="rounded-md border border-border bg-card px-3 py-2">
+              <span class="block text-foreground">{name}</span>
+              {shape.map((row) => (
+                <span class="block text-muted-foreground">{row}</span>
+              ))}
+            </li>
+          ))
+        }
+      </ul>
+    </section>
 
-      <section class="flex flex-col gap-4">
-        <h2 class="font-display text-2xl">Leaderboard</h2>
+    <section class="mt-16">
+      <h2 class="font-display text-2xl">Playing</h2>
+      <ul class="mt-4 flex flex-col gap-2 text-muted-foreground">
+        <li>Play the bot, or create a room and give a friend the four-letter code.</li>
+        <li>
+          Arrow keys move, <span class="font-mono text-foreground">r</span> rotates,
+          <span class="font-mono text-foreground">enter</span> places or fires, and
+          <span class="font-mono text-foreground">R</span> auto-places the rest of your fleet.
+        </li>
+        <li>Drop out mid-game and you have 60 seconds to reconnect before you forfeit.</li>
+        <li>Wins against people count on the leaderboard. Wins against the bot do not.</li>
+      </ul>
+    </section>
+
+    <section class="mt-16">
+      <h2 class="font-display text-2xl">Leaderboard</h2>
+      <div class="mt-4">
         {
           down ? (
             <p class="text-muted-foreground">The leaderboard is unreachable right now.</p>
@@ -211,25 +202,16 @@ const description =
             </ol>
           )
         }
-      </section>
+      </div>
+    </section>
+  </main>
+</BaseLayout>
 
-      <footer class="border-t border-border pt-8 text-sm text-muted-foreground">
-        <a href="https://phons.dev" class="transition hover:text-foreground">phons.dev</a>
-        <span aria-hidden="true" class="px-2">/</span>
-        <a
-          href="https://github.com/divizn/ssh-battleships"
-          class="transition hover:text-foreground">source</a
-        >
-      </footer>
-    </main>
-
-    <script>
-      const button = document.getElementById("copy") as HTMLButtonElement | null;
-      button?.addEventListener("click", async () => {
-        await navigator.clipboard.writeText(button.dataset.command ?? "");
-        button.textContent = "copied";
-        setTimeout(() => (button.textContent = "copy"), 1500);
-      });
-    </script>
-  </body>
-</html>
+<script>
+  const button = document.getElementById("copy") as HTMLButtonElement | null;
+  button?.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(button.dataset.command ?? "");
+    button.textContent = "copied";
+    setTimeout(() => (button.textContent = "copy"), 1500);
+  });
+</script>

@@ -9,6 +9,12 @@
   font-display: swap;
 }
 
+/* Dark is the default/root palette — this site's designed identity — with an
+   explicit [data-theme="light"] override for the toggle. Not tied to
+   prefers-color-scheme: system preference isn't a substitute for an
+   intentionally-designed light palette here. Kept in sync with phon and
+   portfolio-site's src/styles/global.css by hand — there's no shared package.
+   The hit/miss/live trio is this site's own, and has no counterpart there. */
 :root {
   --background: #000000;
   --foreground: #f4f4f5;
@@ -17,10 +23,38 @@
   --border-strong: #3f3f46;
   --card: #18181b;
   --muted: #27272a;
+  --primary: #f4f4f5;
+  --primary-foreground: #18181b;
+
+  --glow-a: rgba(244, 244, 245, 0.35);
+  --glow-b: rgba(244, 244, 245, 0.15);
+  --glow-a-strong: rgba(244, 244, 245, 0.6);
+  --glow-b-strong: rgba(244, 244, 245, 0.3);
 
   --hit: #f87171;
   --miss: #52525b;
   --live: #34d399;
+}
+
+[data-theme="light"] {
+  --background: #ffffff;
+  --foreground: #18181b;
+  --muted-foreground: #52525b;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --card: #fafafa;
+  --muted: #f4f4f5;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+
+  --glow-a: rgba(24, 24, 27, 0.25);
+  --glow-b: rgba(24, 24, 27, 0.1);
+  --glow-a-strong: rgba(24, 24, 27, 0.45);
+  --glow-b-strong: rgba(24, 24, 27, 0.2);
+
+  --hit: #dc2626;
+  --miss: #a1a1aa;
+  --live: #059669;
 }
 
 @theme inline {
@@ -34,12 +68,22 @@
   --color-border-strong: var(--border-strong);
   --color-card: var(--card);
   --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: #71717a;
   --color-hit: var(--hit);
   --color-miss: var(--miss);
   --color-live: var(--live);
 
   --animate-fade-in: fade-in 1s ease-out both;
   --animate-blink: blink 1.1s steps(2, start) infinite;
+  --animate-title: title 1s ease-out both;
+  --animate-text-glow: text-glow 3s ease-in-out infinite;
+  /* animation is a shorthand: two separate animate-* utility classes on one
+     element don't combine, the later stylesheet rule just overrides the
+     earlier one's value entirely. This is the single-declaration combo for
+     the hero title (title-in + looping glow) so both actually run. */
+  --animate-title-glow: title 1s ease-out both, text-glow 3s ease-in-out infinite;
 
   @keyframes fade-in {
     from {
@@ -57,10 +101,47 @@
       opacity: 0;
     }
   }
+
+  @keyframes title {
+    from {
+      opacity: 0;
+      filter: blur(6px);
+      transform: scale(0.98);
+    }
+    to {
+      opacity: 1;
+      filter: blur(0);
+      transform: scale(1);
+    }
+  }
+
+  @keyframes text-glow {
+    0%,
+    100% {
+      text-shadow:
+        0 0 20px var(--glow-a),
+        0 0 50px var(--glow-b);
+    }
+    50% {
+      text-shadow:
+        0 0 30px var(--glow-a-strong),
+        0 0 80px var(--glow-b-strong);
+    }
+  }
 }
 
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
+}
+
+/* Smooth theme-switch transition. Color/background/border are cheap to animate
+   (no layout impact), so a broad selector is fine here. */
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: ease;
+  transition-duration: 200ms;
 }

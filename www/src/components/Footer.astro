@@ -1,0 +1,38 @@
+---
+const socials = [
+  { label: "GitHub", href: "https://github.com/divizn" },
+  { label: "LinkedIn", href: "https://linkedin.com/in/hassanjaved186" },
+];
+---
+
+<footer class="border-t border-border">
+  <div
+    class="mx-auto flex max-w-4xl flex-col items-center gap-4 px-6 py-10 text-sm text-muted-foreground sm:flex-row sm:justify-between"
+  >
+    <p>&copy; {new Date().getFullYear()} divizn</p>
+    <ul class="flex gap-4">
+      {
+        socials.map((social) => (
+          <li>
+            <a
+              href={social.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center gap-1.5 duration-200 hover:text-foreground"
+            >
+              {social.label}
+            </a>
+          </li>
+        ))
+      }
+      <li>
+        <a
+          href="https://github.com/divizn/ssh-battleships"
+          class="flex items-center gap-1.5 duration-200 hover:text-foreground"
+        >
+          source
+        </a>
+      </li>
+    </ul>
+  </div>
+</footer>

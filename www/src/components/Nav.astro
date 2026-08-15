@@ -1,0 +1,93 @@
+---
+---
+
+<header class="border-b border-border">
+  <div class="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
+    <a
+      href="https://phons.dev"
+      aria-label="phon — home"
+      class="flex h-8 w-8 items-center justify-center rounded-full border border-border-strong bg-card text-foreground duration-200 hover:border-foreground/40"
+    >
+      <svg
+        class="h-4 w-4"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <polyline points="4 17 10 11 4 5"></polyline>
+        <line x1="12" y1="19" x2="20" y2="19"></line>
+      </svg>
+    </a>
+    <button
+      id="theme-toggle"
+      type="button"
+      aria-label="Switch theme"
+      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border-strong text-foreground duration-200 hover:border-foreground/40"
+    >
+      <svg
+        data-icon="sun"
+        class="h-4 w-4"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="5"></circle>
+        <line x1="12" y1="1" x2="12" y2="3"></line>
+        <line x1="12" y1="21" x2="12" y2="23"></line>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+        <line x1="1" y1="12" x2="3" y2="12"></line>
+        <line x1="21" y1="12" x2="23" y2="12"></line>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+      </svg>
+      <svg
+        data-icon="moon"
+        class="hidden h-4 w-4"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<script>
+  const button = document.getElementById("theme-toggle");
+  const sun = button?.querySelector('[data-icon="sun"]');
+  const moon = button?.querySelector('[data-icon="moon"]');
+
+  function paint() {
+    const light = document.documentElement.dataset.theme === "light";
+    sun?.classList.toggle("hidden", light);
+    moon?.classList.toggle("hidden", !light);
+    button?.setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
+  }
+
+  button?.addEventListener("click", () => {
+    if (document.documentElement.dataset.theme === "light") {
+      delete document.documentElement.dataset.theme;
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.dataset.theme = "light";
+      localStorage.setItem("theme", "light");
+    }
+    paint();
+  });
+
+  paint();
+</script>
