@@ -69,7 +69,8 @@ aws ec2 start-instances --instance-ids i-...   # open now
 aws ec2 stop-instances  --instance-ids i-...   # closed
 ```
 
-For fixed hours, two EventBridge schedules against the universal EC2 target, no Lambda involved:
+The published hours are Friday to Sunday, 6pm to 11pm UK time, which is two EventBridge schedules
+against the universal EC2 target, no Lambda involved:
 
 ```sh
 aws scheduler create-schedule --name battleships-open \
@@ -77,10 +78,22 @@ aws scheduler create-schedule --name battleships-open \
   --schedule-expression-timezone Europe/London \
   --flexible-time-window '{"Mode":"OFF"}' \
   --target '{"Arn":"arn:aws:scheduler:::aws-sdk:ec2:startInstances","RoleArn":"<scheduler-role>","Input":"{\"InstanceIds\":[\"i-...\"]}"}'
+
+aws scheduler create-schedule --name battleships-closed \
+  --schedule-expression "cron(0 23 ? * FRI-SUN *)" \
+  --schedule-expression-timezone Europe/London \
+  --flexible-time-window '{"Mode":"OFF"}' \
+  --target '{"Arn":"arn:aws:scheduler:::aws-sdk:ec2:stopInstances","RoleArn":"<scheduler-role>","Input":"{\"InstanceIds\":[\"i-...\"]}"}'
 ```
 
-The closing schedule is the same with `stopInstances` and its own cron. The role needs only
-`ec2:StartInstances` and `ec2:StopInstances`, trusted by `scheduler.amazonaws.com`.
+The timezone is named rather than an offset, so the hours stay put across BST and GMT. The role
+needs only `ec2:StartInstances` and `ec2:StopInstances`, trusted by `scheduler.amazonaws.com`.
+The hours are also written out in one sentence on the landing page, which is a separate repo:
+change them here and change them there.
+
+A game still in progress at 11pm dies with the instance. Sessions are short and the audience is
+one person at a time, so the fix (draining, or refusing to stop while a room is live) is not
+worth building yet.
 
 While it runs, the server writes a `battleships:live` key to Redis every minute with a 150 second
 expiry, and deletes it on a clean shutdown. That key is the only thing the landing page's live
