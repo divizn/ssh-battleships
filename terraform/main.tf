@@ -1,45 +1,12 @@
-terraform {
-  required_version = ">= 1.9"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.40"
-    }
-  }
-}
-
 provider "aws" {
   region = var.region
-}
 
-variable "region" {
-  type    = string
-  default = "eu-west-2"
-}
-
-variable "name" {
-  type    = string
-  default = "battleships"
-}
-
-variable "repo" {
-  type    = string
-  default = "https://github.com/divizn/ssh-battleships.git"
-}
-
-variable "open_cron" {
-  type    = string
-  default = "cron(0 18 ? * FRI-SUN *)"
-}
-
-variable "close_cron" {
-  type    = string
-  default = "cron(0 23 ? * FRI-SUN *)"
-}
-
-variable "timezone" {
-  type    = string
-  default = "Europe/London"
+  default_tags {
+    tags = {
+      Project   = var.name
+      ManagedBy = "terraform"
+    }
+  }
 }
 
 data "aws_vpc" "default" {
@@ -147,6 +114,10 @@ resource "aws_instance" "game" {
     region = var.region
   })
 
+  # user_data only runs on a fresh instance, so editing the script has to rebuild the box or it
+  # buys a stop/start and changes nothing
+  user_data_replace_on_change = true
+
   root_block_device {
     volume_size = 8
     volume_type = "gp3"
@@ -201,7 +172,6 @@ resource "aws_iam_role_policy" "power" {
   policy = data.aws_iam_policy_document.power.json
 }
 
-# named timezone rather than an offset, so the hours hold across BST and GMT
 resource "aws_scheduler_schedule" "open" {
   name                         = "${var.name}-open"
   schedule_expression          = var.open_cron
@@ -232,13 +202,4 @@ resource "aws_scheduler_schedule" "close" {
     role_arn = aws_iam_role.scheduler.arn
     input    = jsonencode({ InstanceIds = [aws_instance.game.id] })
   }
-}
-
-output "address" {
-  value       = aws_eip.game.public_ip
-  description = "the A record play.phons.dev points at, grey cloud"
-}
-
-output "instance_id" {
-  value = aws_instance.game.id
 }
