@@ -80,7 +80,7 @@ func TestProfileReadsTheStoredRecord(t *testing.T) {
 
 // The instance is shared with daily-quotes, which owns quote:<date>.
 func TestEveryKeyIsNamespaced(t *testing.T) {
-	for _, k := range []string{key(alice), leaderboard} {
+	for _, k := range []string{key(alice), leaderboard, total, live} {
 		if !strings.HasPrefix(k, "battleships:") {
 			t.Errorf("key %q is loose in a shared database", k)
 		}
@@ -96,21 +96,27 @@ func TestProfileOfANewPlayerIsEmptyRatherThanAnError(t *testing.T) {
 	}
 }
 
-func TestRankedResultTouchesTheLeaderboardAndBotGamesDoNot(t *testing.T) {
-	ranked := &fake{replies: []string{`[{"result":1},{"result":1},{"result":1},{"result":1},{"result":1}]`}}
+func TestEveryWinCountsOnTotalAndOnlyRankedOnesOnTheLeaderboard(t *testing.T) {
+	ranked := &fake{replies: []string{`[{"result":1},{"result":1},{"result":1},{"result":1},{"result":1},{"result":1}]`}}
 	if err := ranked.serve(t).Record(alice, bob, true); err != nil {
 		t.Fatalf("Record: %v", err)
 	}
-	if got := len(ranked.sent[0]); got != 5 {
-		t.Fatalf("ranked win sent %d commands, want wins, games, zincrby, losses, games", got)
+	if got := len(ranked.sent[0]); got != 6 {
+		t.Fatalf("ranked win sent %d commands, want wins, games, total, leaderboard, losses, games", got)
 	}
-	if want := "ZINCRBY " + leaderboard + " 1 " + alice; ranked.command(t, 0, 2) != want {
+	if want := "ZINCRBY " + total + " 1 " + alice; ranked.command(t, 0, 2) != want {
 		t.Errorf("sent %q, want %q", ranked.command(t, 0, 2), want)
 	}
+	if want := "ZINCRBY " + leaderboard + " 1 " + alice; ranked.command(t, 0, 3) != want {
+		t.Errorf("sent %q, want %q", ranked.command(t, 0, 3), want)
+	}
 
-	bot := &fake{replies: []string{`[{"result":1},{"result":1}]`}}
+	bot := &fake{replies: []string{`[{"result":1},{"result":1},{"result":1}]`}}
 	if err := bot.serve(t).Record(alice, "bot", false); err != nil {
 		t.Fatalf("Record against the bot: %v", err)
+	}
+	if want := "ZINCRBY " + total + " 1 " + alice; bot.command(t, 0, 2) != want {
+		t.Errorf("a bot win missed the total board: %q", bot.command(t, 0, 2))
 	}
 	for _, c := range bot.sent[0] {
 		if toString(c[1]) == leaderboard {
@@ -155,6 +161,27 @@ func TestTopPairsScoresWithNames(t *testing.T) {
 	want := []Entry{{Name: "Alice", Wins: 5}, {Name: "anonymous", Wins: 2}}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("Top = %+v, want %+v", got, want)
+	}
+	if want := "ZRANGE " + leaderboard + " 0 7 REV WITHSCORES"; f.command(t, 0, 0) != want {
+		t.Errorf("Top read %q, want %q", f.command(t, 0, 0), want)
+	}
+}
+
+func TestTopTotalReadsTheOtherBoard(t *testing.T) {
+	f := &fake{replies: []string{
+		`[{"result":["` + alice + `",7]}]`,
+		`[{"result":"Alice"}]`,
+	}}
+
+	got, err := f.serve(t).TopTotal(8)
+	if err != nil {
+		t.Fatalf("TopTotal: %v", err)
+	}
+	if want := "ZRANGE " + total + " 0 7 REV WITHSCORES"; f.command(t, 0, 0) != want {
+		t.Errorf("TopTotal read %q, want %q", f.command(t, 0, 0), want)
+	}
+	if len(got) != 1 || got[0] != (Entry{Name: "Alice", Wins: 7}) {
+		t.Errorf("TopTotal = %+v, want Alice with 7", got)
 	}
 }
 

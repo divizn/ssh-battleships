@@ -22,6 +22,7 @@ const (
 	// here stays under one namespace so the two can never grow into each other.
 	namespace   = "battleships:"
 	leaderboard = namespace + "leaderboard"
+	total       = namespace + "total"
 
 	// live expires on its own, so a server that is stopped, killed or unplugged stops
 	// claiming to be up without anyone having to tidy after it.
@@ -95,12 +96,13 @@ func (s *Store) SetName(id, name string) error {
 	return err
 }
 
-// Record books a finished game. Bot games are ranked false: a leaderboard anyone can farm
-// against the computer is not worth reading.
+// Record books a finished game. Every win counts on the total board; only ranked ones reach the
+// leaderboard, because a board anyone can farm against the computer is not worth reading.
 func (s *Store) Record(winner, loser string, ranked bool) error {
 	var cmds [][]any
 	if s.Tracks(winner) {
 		cmds = append(cmds, []any{"HINCRBY", key(winner), "wins", 1}, []any{"HINCRBY", key(winner), "games", 1})
+		cmds = append(cmds, []any{"ZINCRBY", total, 1, winner})
 		if ranked {
 			cmds = append(cmds, []any{"ZINCRBY", leaderboard, 1, winner})
 		}
@@ -135,17 +137,23 @@ func (s *Store) Offline() error {
 	return err
 }
 
-func (s *Store) Top(n int) ([]Entry, error) {
+// Top ranks wins against people.
+func (s *Store) Top(n int) ([]Entry, error) { return s.board(leaderboard, n) }
+
+// TopTotal ranks every win a tracked player has, bot games included.
+func (s *Store) TopTotal(n int) ([]Entry, error) { return s.board(total, n) }
+
+func (s *Store) board(zset string, n int) ([]Entry, error) {
 	if s == nil || n <= 0 {
 		return nil, nil
 	}
-	res, err := s.do([]any{"ZRANGE", leaderboard, 0, n - 1, "REV", "WITHSCORES"})
+	res, err := s.do([]any{"ZRANGE", zset, 0, n - 1, "REV", "WITHSCORES"})
 	if err != nil {
 		return nil, err
 	}
 	var flat []json.RawMessage
 	if err := json.Unmarshal(res[0], &flat); err != nil {
-		return nil, fmt.Errorf("zrange %s: %w", leaderboard, err)
+		return nil, fmt.Errorf("zrange %s: %w", zset, err)
 	}
 
 	entries := make([]Entry, 0, len(flat)/2)
@@ -153,7 +161,7 @@ func (s *Store) Top(n int) ([]Entry, error) {
 	for i := 0; i+1 < len(flat); i += 2 {
 		var id string
 		if err := json.Unmarshal(flat[i], &id); err != nil {
-			return nil, fmt.Errorf("zrange %s: %w", leaderboard, err)
+			return nil, fmt.Errorf("zrange %s: %w", zset, err)
 		}
 		entries = append(entries, Entry{Wins: score(flat[i+1])})
 		names = append(names, []any{"HGET", key(id), "name"})

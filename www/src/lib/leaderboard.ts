@@ -38,12 +38,20 @@ export async function isLive(): Promise<boolean> {
   return beat.result !== null;
 }
 
+// wins against people, the board worth reading
 export async function top(n: number): Promise<Entry[]> {
+  return board(`${namespace}leaderboard`, n);
+}
+
+// every win a tracked player has, bot games included
+export async function topTotal(n: number): Promise<Entry[]> {
+  return board(`${namespace}total`, n);
+}
+
+async function board(zset: string, n: number): Promise<Entry[]> {
   if (!secrets.UPSTASH_REDIS_REST_URL || !secrets.UPSTASH_REDIS_REST_TOKEN) return [];
 
-  const [ranked] = await pipeline([
-    ["ZRANGE", `${namespace}leaderboard`, 0, n - 1, "REV", "WITHSCORES"],
-  ]);
+  const [ranked] = await pipeline([["ZRANGE", zset, 0, n - 1, "REV", "WITHSCORES"]]);
   const flat = (ranked.result ?? []) as string[];
   if (flat.length === 0) return [];
 
