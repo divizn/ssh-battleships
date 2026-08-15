@@ -101,6 +101,10 @@ func hostKeyPath(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("SSH_HOST_KEY is not base64: %w", err)
 	}
+	// the scratch image this ships in has no /tmp of its own
+	if err := os.MkdirAll(os.TempDir(), 0o700); err != nil {
+		return "", err
+	}
 	f := filepath.Join(os.TempDir(), "battleships_host_key")
 	return f, os.WriteFile(f, pem, 0o600)
 }
