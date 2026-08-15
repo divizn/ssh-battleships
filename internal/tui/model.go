@@ -19,6 +19,7 @@ const (
 	joining
 	playing
 	naming
+	unranked
 )
 
 type choice int
@@ -59,6 +60,9 @@ type Model struct {
 	profile store.Profile
 	top     []store.Entry
 
+	// a keyless session keeps its own tally, which lives only as long as the connection
+	localWins, localLosses int
+
 	sess *lobby.Session
 	snap lobby.Snapshot
 	live bool
@@ -76,7 +80,12 @@ func New(l *lobby.Lobby, db *store.Store, me lobby.Player) Model {
 // NewWithRenderer builds a model that draws through r, which for an SSH session must be the
 // renderer bound to that session rather than the server's own terminal.
 func NewWithRenderer(l *lobby.Lobby, db *store.Store, me lobby.Player, r *lipgloss.Renderer) Model {
-	return Model{lobby: l, db: db, me: me, st: newStyles(r)}
+	m := Model{lobby: l, db: db, me: me, st: newStyles(r)}
+	// a keyless player is told before the first game, not left to discover it after one
+	if db != nil && !db.Tracks(me.ID) {
+		m.screen = unranked
+	}
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
@@ -139,6 +148,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateJoining(msg.String())
 		case naming:
 			return m.updateNaming(msg.String())
+		case unranked:
+			return m.updateUnranked(msg.String())
 		default:
 			return m.updatePlaying(msg.String())
 		}
@@ -162,6 +173,16 @@ func (m Model) settle(msg loaded) Model {
 		m.screen, m.typed, m.notice = naming, m.me.Name, ""
 	}
 	return m
+}
+
+func (m Model) updateUnranked(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "q":
+		return m, m.quit()
+	case "enter":
+		m.screen = menu
+	}
+	return m, nil
 }
 
 func (m Model) updateNaming(key string) (tea.Model, tea.Cmd) {
@@ -290,6 +311,13 @@ func (m Model) leave(notice string) (Model, tea.Cmd) {
 	if m.sess != nil {
 		m.sess.Close()
 		m.sess = nil
+	}
+	if m.snap.Phase == lobby.Over && !m.db.Tracks(m.me.ID) {
+		if m.snap.Winner == m.mine() {
+			m.localWins++
+		} else {
+			m.localLosses++
+		}
 	}
 	m.live, m.screen, m.notice = false, menu, notice
 	m.snap = lobby.Snapshot{}

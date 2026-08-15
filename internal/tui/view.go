@@ -54,6 +54,8 @@ func (m Model) pane() string {
 		content = m.namePane()
 	case m.screen == joining:
 		content = m.joinPane()
+	case m.screen == unranked:
+		content = m.unrankedPane()
 	case !m.live || m.snap.Phase == lobby.Waiting:
 		content = m.waitPane()
 	default:
@@ -101,7 +103,10 @@ func (m Model) record() string {
 		return ""
 	}
 	if !m.db.Tracks(m.me.ID) {
-		return "No SSH key on this session, so results are not recorded. Add one and reconnect to be ranked."
+		if m.localWins+m.localLosses == 0 {
+			return "Anonymous session, nothing is recorded."
+		}
+		return fmt.Sprintf("%d won · %d lost this session, not recorded.", m.localWins, m.localLosses)
 	}
 	if m.profile.Games == 0 {
 		return "No games played yet."
@@ -117,6 +122,25 @@ func (m Model) board() string {
 			m.st.dim.Render(fmt.Sprintf("%d.", i+1)), lobby.NameLimit, e.Name, m.st.code.Render(strconv.Itoa(e.Wins))))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+// unrankedPane is shown once, before the menu, to a session with no SSH key. The same facts
+// are on the site, which is why the address is here rather than a longer explanation.
+func (m Model) unrankedPane() string {
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.st.heading.Render("This session is anonymous"),
+		"",
+		m.st.dim.Render("Your terminal offered no SSH public key, and that key is"),
+		m.st.dim.Render("what a profile is kept under here. Everything is playable"),
+		m.st.dim.Render("and this session keeps its own tally, but nothing is saved:"),
+		m.st.dim.Render("no leaderboard place, and no reconnecting into your seat"),
+		m.st.dim.Render("if you drop mid-game."),
+		"",
+		m.st.dim.Render("To be recorded, run this once and connect again:"),
+		m.st.code.Render("ssh-keygen -t ed25519"),
+		"",
+		m.st.dim.Render("More at ")+m.st.code.Render("battleships.phons.dev"),
+	)
 }
 
 func (m Model) namePane() string {
@@ -282,6 +306,8 @@ func (m Model) headline() string {
 		return "First time here. Pick a name other players will see."
 	case m.screen == joining:
 		return "Type the four letters your friend was given."
+	case m.screen == unranked:
+		return "Nothing this session does will be recorded."
 	case !m.live:
 		return ""
 	}
@@ -314,9 +340,9 @@ func (m Model) subline() string {
 				m.snap.Opponent.Name, remaining(m.snap.AwayUntil)))
 		}
 		if m.snap.Game.Turn != m.mine() {
-			return m.st.dim.Render("Their go.")
+			return m.st.theirs.Render("THEIR GO") + " " + m.st.dim.Render(m.shot(m.snap.Last[m.theirs()], false))
 		}
-		return m.shot(m.snap.Last[m.theirs()], false)
+		return m.st.yours.Render("YOUR GO") + " " + m.st.dim.Render(m.shot(m.snap.Last[m.theirs()], false))
 	case lobby.Over:
 		return m.tally(m.theirs())
 	}
@@ -375,6 +401,8 @@ func (m Model) help() string {
 		return "type a name · enter save"
 	case m.screen == joining:
 		return "type four letters · enter join · esc back"
+	case m.screen == unranked:
+		return "enter continue · q quit"
 	case !m.live:
 		return "esc back · q quit"
 	}

@@ -339,20 +339,49 @@ func TestLeavingAGameReturnsToTheMenu(t *testing.T) {
 	}
 }
 
-// A keyless session plays perfectly well but nothing it does is kept, which is worth saying
-// before the game rather than discovering afterwards that a real win vanished.
-func TestKeylessSessionIsToldItIsUnranked(t *testing.T) {
+// A keyless session plays perfectly well but nothing it does is kept, so it is stopped once on
+// the way in rather than discovering afterwards that a real win vanished.
+func TestKeylessSessionIsWarnedBeforeTheMenu(t *testing.T) {
 	db := store.New("http://redis.invalid", "token")
 	m := New(lobby.New(), db, lobby.Player{ID: "anon:deadbeef", Name: "juanm"})
-	if got := m.View(); !strings.Contains(got, "No SSH key") {
-		t.Errorf("a keyless session was not warned:\n%s", got)
+	if m.screen != unranked {
+		t.Fatalf("a keyless session started on screen %v, want the warning", m.screen)
+	}
+	got := m.View()
+	for _, want := range []string{"anonymous", "ssh-keygen -t ed25519", "battleships.phons.dev"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the warning never mentions %q:\n%s", want, got)
+		}
+	}
+
+	after := press(m, "enter").(Model)
+	if after.screen != menu {
+		t.Errorf("enter left the player on screen %v, want the menu", after.screen)
+	}
+	if !strings.Contains(after.View(), "Anonymous session") {
+		t.Errorf("the menu forgot the session is unranked:\n%s", after.View())
 	}
 }
 
-// With no database at all there is nothing the player could do, so the menu says nothing.
+// With no database at all there is nothing the player could do, so nothing is said.
 func TestNoDatabaseMeansNoWarning(t *testing.T) {
 	m := New(lobby.New(), nil, lobby.Player{ID: "anon:deadbeef", Name: "juanm"})
-	if got := m.View(); strings.Contains(got, "No SSH key") {
-		t.Errorf("warned about keys with no database configured:\n%s", got)
+	if m.screen != menu {
+		t.Fatalf("started on screen %v with no database, want the menu", m.screen)
+	}
+	if strings.Contains(m.View(), "anonymous") {
+		t.Errorf("warned about keys with no database configured:\n%s", m.View())
+	}
+}
+
+// Whose go it is was previously only implied by a dim "Their go.", which is easy to miss in a
+// screen full of grids.
+func TestWhoseGoItIsIsStated(t *testing.T) {
+	m := botGame(t).(Model)
+	if got := m.View(); !strings.Contains(got, "YOUR GO") {
+		t.Errorf("the player is not told it is their go:\n%s", got)
+	}
+	if m.snap.Game.Turn != m.mine() {
+		t.Fatalf("the bot game did not start on the player's turn")
 	}
 }

@@ -9,6 +9,7 @@ type styles struct {
 	ship, hurt, hit, sunk      lipgloss.Style
 	legal, broken, here        lipgloss.Style
 	win, lose, code            lipgloss.Style
+	yours, theirs              lipgloss.Style
 	box, column, banner, body  lipgloss.Style
 	chosen, unchosen, prompt   lipgloss.Style
 }
@@ -35,6 +36,8 @@ func newStyles(r *lipgloss.Renderer) styles {
 		here:     r.NewStyle().Reverse(true),
 		win:      r.NewStyle().Bold(true).Foreground(green),
 		lose:     r.NewStyle().Bold(true).Foreground(red),
+		yours:    r.NewStyle().Bold(true).Foreground(green),
+		theirs:   r.NewStyle().Bold(true).Foreground(red),
 		code:     r.NewStyle().Bold(true).Foreground(lipgloss.Color("14")),
 		chosen:   r.NewStyle().Bold(true).Foreground(lipgloss.Color("14")),
 		unchosen: r.NewStyle().Foreground(grey),
