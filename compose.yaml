@@ -1,0 +1,7 @@
+services:
+  battleships:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "22:2222"
+    env_file: .env

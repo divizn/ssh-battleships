@@ -20,22 +20,41 @@ remembers nothing.
 
 ## Deploying
 
-Fly runs the binary; the edge maps port 22 to 2222 (`fly.toml`). Two things bite if skipped.
+A single DigitalOcean droplet runs the container, which publishes the droplet's port 22 to the
+server's 2222 (`compose.yaml`). Three things bite if skipped.
 
-**The host key must survive deploys.** `SSH_HOST_KEY` holds one base64 ed25519 private key and
+**The host key must survive redeploys.** `SSH_HOST_KEY` holds one base64 ed25519 private key and
 the server writes it out at boot. Regenerate it and every returning player gets
 `REMOTE HOST IDENTIFICATION HAS CHANGED`.
+
+**The droplet's own sshd has to move off port 22 first**, or the container cannot bind it. Open
+the new port and confirm you can log in on it *before* closing the old one.
 
 **`play.phons.dev` must be DNS-only in Cloudflare.** The orange cloud proxies HTTP and HTTPS
 only; SSH through it needs Spectrum.
 
+On the droplet, once:
+
 ```sh
-fly launch --no-deploy --copy-config
-fly secrets set SSH_HOST_KEY="$(base64 -w0 .ssh/battleships_ed25519)"
-fly secrets set UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=...
-fly deploy
-fly ips list   # the A record play.phons.dev points at, grey cloud
+sed -i 's/^#\?Port 22$/Port 2200/' /etc/ssh/sshd_config && systemctl restart ssh
+ufw allow 2200/tcp && ufw allow 22/tcp && ufw enable
+curl -fsSL https://get.docker.com | sh
+
+# 512MB is enough to run the game but not to compile it
+fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
 
-The machine holds live games in memory, which is why `fly.toml` keeps one always running rather
-than stopping it when idle.
+Then, per deploy:
+
+```sh
+git pull
+docker compose up -d --build
+```
+
+`.env` on the droplet holds `SSH_HOST_KEY` (`base64 -w0 .ssh/battleships_ed25519`) alongside the
+two Upstash variables. Point the `play.phons.dev` A record at the droplet's IP, grey cloud.
+
+Other projects share the box by publishing their own ports from their own compose files. A load
+balancer only earns its $12/mo once there is more than one droplet to balance across; until then
+it is a second thing to configure and no failover.
