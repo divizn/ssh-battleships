@@ -16,8 +16,13 @@ const (
 	bodyWidth = colWidth*2 + len(gap)
 )
 
+// Two greys, both adaptive: the terminal background decides whether muted means darker or
+// lighter. dim carries text that still has to be read, water only ever suggests an edge.
 var (
-	dim     = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	grey    = lipgloss.AdaptiveColor{Light: "241", Dark: "248"}
+	greyer  = lipgloss.AdaptiveColor{Light: "249", Dark: "242"}
+	dim     = lipgloss.NewStyle().Foreground(grey)
+	water   = lipgloss.NewStyle().Foreground(greyer)
 	title   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 	heading = lipgloss.NewStyle().Bold(true)
 	ship    = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
@@ -31,7 +36,7 @@ var (
 	lose    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
 	box     = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(greyer).
 		Padding(0, 2)
 	column = lipgloss.NewStyle().Width(colWidth)
 	banner = lipgloss.NewStyle().Width(bodyWidth).Align(lipgloss.Center)
@@ -97,7 +102,7 @@ func (m Model) grid(p game.Player) string {
 }
 
 func (m Model) cell(p game.Player, c game.Coord, ghost []game.Coord) string {
-	style, glyph := dim, "·"
+	style, glyph := water, "·"
 	switch {
 	case slices.Contains(ghost, c):
 		style, glyph = legal, "#"
@@ -133,7 +138,7 @@ func (m Model) roster(p game.Player) string {
 		case s.Hits > 0 && p == you:
 			names = append(names, hurt.Render("!"+class.String()))
 		default:
-			names = append(names, dim.Render("·")+class.String())
+			names = append(names, water.Render("·")+class.String())
 		}
 	}
 	return strings.Join(names[:3], "  ") + "\n" + strings.Join(names[3:], "  ")
