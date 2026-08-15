@@ -2,55 +2,64 @@ package tui
 
 import (
 	"fmt"
-	"math/rand"
-	"time"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
-	"github.com/divizn/ssh-battleships/internal/ai"
 	"github.com/divizn/ssh-battleships/internal/game"
+	"github.com/divizn/ssh-battleships/internal/lobby"
 )
+
+type screen int
 
 const (
-	you = game.P1
-	foe = game.P2
+	menu screen = iota
+	joining
+	playing
 )
 
-type phase int
+type choice int
 
 const (
-	placing phase = iota
-	firing
-	over
+	playBot choice = iota
+	createRoom
+	joinRoom
 )
 
-// shotLog is the last thing one side did, kept as a result so the view can colour it.
-type shotLog struct {
-	set  bool
-	res  game.Result
-	at   game.Coord
-	note string
-}
+var menuItems = []string{"Play the bot", "Create a room", "Join with a code"}
+
+// roomGone arrives when the room shuts down under us.
+type roomGone struct{}
 
 type Model struct {
-	g             game.Game
-	bot           *ai.Bot
-	rng           *rand.Rand
-	phase         phase
+	lobby *lobby.Lobby
+	me    lobby.Player
+	st    styles
+
+	screen screen
+	choice choice
+	typed  string
+	notice string
+
+	sess *lobby.Session
+	snap lobby.Snapshot
+	live bool
+
 	cursor        game.Coord
 	vertical      bool
-	next          int
-	yourShot      shotLog
-	botShot       shotLog
 	bell          bool
 	width, height int
 }
 
-func New() Model {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	m := Model{rng: rng, bot: ai.New(rng)}
-	game.AutoPlace(m.g.Board(foe), rng)
-	return m
+func New(l *lobby.Lobby, me lobby.Player) Model {
+	return NewWithRenderer(l, me, lipgloss.DefaultRenderer())
+}
+
+// NewWithRenderer builds a model that draws through r, which for an SSH session must be the
+// renderer bound to that session rather than the server's own terminal.
+func NewWithRenderer(l *lobby.Lobby, me lobby.Player, r *lipgloss.Renderer) Model {
+	return Model{lobby: l, me: me, st: newStyles(r)}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -58,93 +67,191 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if size, ok := msg.(tea.WindowSizeMsg); ok {
-		m.width, m.height = size.Width, size.Height
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
+		return m, nil
+
+	case lobby.Snapshot:
+		m.bell = sunkSince(m.snap, msg) && m.live
+		m.snap, m.live = msg, true
+		return m, listen(m.sess)
+
+	case roomGone:
+		return m.leave("That room has closed."), nil
+
+	case tea.KeyMsg:
+		m.bell = false
+		switch msg.String() {
+		case "ctrl+c":
+			return m, m.quit()
+		}
+		switch m.screen {
+		case menu:
+			return m.updateMenu(msg.String())
+		case joining:
+			return m.updateJoining(msg.String())
+		default:
+			return m.updatePlaying(msg.String())
+		}
+	}
+	return m, nil
+}
+
+func (m Model) updateMenu(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "q":
+		return m, m.quit()
+	case "up", "k":
+		m.choice = choice(max(int(m.choice)-1, 0))
+	case "down", "j":
+		m.choice = choice(min(int(m.choice)+1, len(menuItems)-1))
+	case "enter", " ":
+		switch m.choice {
+		case playBot:
+			return m.enter(m.lobby.Bot(m.me))
+		case createRoom:
+			return m.enter(m.lobby.Create(m.me))
+		default:
+			m.screen, m.typed, m.notice = joining, "", ""
+		}
+	}
+	return m, nil
+}
+
+func (m Model) updateJoining(key string) (tea.Model, tea.Cmd) {
+	switch {
+	case key == "esc":
+		m.screen, m.notice = menu, ""
+	case key == "backspace":
+		if m.typed != "" {
+			m.typed = m.typed[:len(m.typed)-1]
+		}
+	case key == "enter":
+		if len(m.typed) < 4 {
+			m.notice = "A room code is four letters."
+			return m, nil
+		}
+		return m.enter(m.lobby.Join(m.typed, m.me))
+	case len(key) == 1 && isLetter(key[0]) && len(m.typed) < 4:
+		m.typed += strings.ToUpper(key)
+	}
+	return m, nil
+}
+
+func (m Model) updatePlaying(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "q":
+		return m, m.quit()
+	case "esc":
+		return m.leave(""), nil
+	}
+	if !m.live {
 		return m, nil
 	}
-	key, ok := msg.(tea.KeyMsg)
-	if !ok {
+
+	if step, ok := steps[key]; ok {
+		m.cursor.Row = clamp(m.cursor.Row + step.Row)
+		m.cursor.Col = clamp(m.cursor.Col + step.Col)
 		return m, nil
 	}
-	m.bell = false
 
-	switch key.String() {
-	case "ctrl+c", "q":
-		return m, tea.Quit
-	}
-
-	switch m.phase {
-	case placing:
-		return m.updatePlacing(key.String()), nil
-	case firing:
-		return m.updateFiring(key.String()), nil
-	case over:
-		if key.String() == "n" {
-			fresh := New()
-			fresh.width, fresh.height = m.width, m.height
-			return fresh, nil
+	switch m.snap.Phase {
+	case lobby.Placing:
+		return m.updatePlacing(key), nil
+	case lobby.Firing:
+		if key == "enter" || key == " " {
+			m.notice = errText(m.sess.Fire(m.cursor))
+		}
+	case lobby.Over:
+		if key == "n" {
+			return m.leave(""), nil
 		}
 	}
 	return m, nil
 }
 
 func (m Model) updatePlacing(key string) Model {
-	if moved, ok := m.move(key); ok {
-		return moved
-	}
 	switch key {
 	case "r":
 		m.vertical = !m.vertical
 	case "R":
-		game.AutoPlace(m.g.Board(you), m.rng)
-		m.next = len(game.Fleet)
+		m.notice = errText(m.sess.AutoPlace())
 	case "enter", " ":
-		if err := m.g.Board(you).Place(m.pending()); err != nil {
-			return m
+		if ship, ok := m.pending(); ok {
+			m.notice = errText(m.sess.Place(ship))
 		}
-		m.next++
-	}
-	if m.next == len(game.Fleet) {
-		m.phase = firing
-		m.cursor = game.Coord{}
 	}
 	return m
 }
 
-func (m Model) updateFiring(key string) Model {
-	if moved, ok := m.move(key); ok {
-		return moved
-	}
-	if key != "enter" && key != " " {
-		return m
-	}
-
-	res, err := m.g.Fire(m.cursor)
+// enter attaches to a freshly opened or joined room.
+func (m Model) enter(s *lobby.Session, err error) (tea.Model, tea.Cmd) {
 	if err != nil {
-		m.yourShot = shotLog{set: true, note: "You have already fired at " + label(m.cursor) + "."}
-		return m
+		m.notice = capitalise(err.Error()) + "."
+		return m, nil
 	}
-	m.yourShot = shotLog{set: true, res: res, at: m.cursor}
-	m.bell = res.Sunk
-	if m.g.Over {
-		m.phase = over
-		return m
-	}
+	m.sess, m.live = s, false
+	m.screen, m.notice = playing, ""
+	m.cursor, m.vertical = game.Coord{}, false
+	return m, listen(s)
+}
 
-	shot := m.bot.NextShot()
-	res, err = m.g.Fire(shot)
-	if err != nil {
-		m.botShot = shotLog{set: true, note: fmt.Sprintf("bot fired at %s: %v", label(shot), err)}
-		return m
+// leave drops the room but keeps the connection, so a player can start another game.
+func (m Model) leave(notice string) Model {
+	if m.sess != nil {
+		m.sess.Close()
+		m.sess = nil
 	}
-	m.bot.Record(shot, res)
-	m.botShot = shotLog{set: true, res: res, at: shot}
-	m.bell = m.bell || res.Sunk
-	if m.g.Over {
-		m.phase = over
-	}
+	m.live, m.screen, m.notice = false, menu, notice
+	m.snap = lobby.Snapshot{}
 	return m
 }
+
+func (m Model) quit() tea.Cmd {
+	if m.sess != nil {
+		m.sess.Close()
+	}
+	return tea.Quit
+}
+
+func listen(s *lobby.Session) tea.Cmd {
+	if s == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		snap, ok := <-s.Events()
+		if !ok {
+			return roomGone{}
+		}
+		return snap
+	}
+}
+
+// sunkSince reports whether the new snapshot carries a sinking the old one did not.
+func sunkSince(old, next lobby.Snapshot) bool {
+	for i := range next.Last {
+		shot := next.Last[i]
+		if shot.Set && shot.Res.Sunk && shot != old.Last[i] {
+			return true
+		}
+	}
+	return false
+}
+
+// pending is the next ship still to be positioned, if any are left.
+func (m Model) pending() (game.Ship, bool) {
+	board := m.snap.Game.Board(m.snap.Seat)
+	for _, class := range game.Fleet {
+		if !board.Placed(class) {
+			return game.Ship{Class: class, Origin: m.cursor, Vertical: m.vertical}, true
+		}
+	}
+	return game.Ship{}, false
+}
+
+func (m Model) mine() game.Player   { return m.snap.Seat }
+func (m Model) theirs() game.Player { return m.snap.Seat.Other() }
 
 var steps = map[string]game.Coord{
 	"up": {Row: -1}, "k": {Row: -1},
@@ -153,23 +260,26 @@ var steps = map[string]game.Coord{
 	"right": {Col: 1}, "l": {Col: 1},
 }
 
-func (m Model) move(key string) (Model, bool) {
-	step, ok := steps[key]
-	if !ok {
-		return m, false
-	}
-	m.cursor.Row = clamp(m.cursor.Row + step.Row)
-	m.cursor.Col = clamp(m.cursor.Col + step.Col)
-	return m, true
-}
-
 func clamp(n int) int {
 	return min(max(n, 0), game.Size-1)
 }
 
-// pending is the ship being positioned during placement.
-func (m Model) pending() game.Ship {
-	return game.Ship{Class: game.Fleet[m.next], Origin: m.cursor, Vertical: m.vertical}
+func isLetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return capitalise(err.Error()) + "."
+}
+
+func capitalise(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func label(c game.Coord) string {

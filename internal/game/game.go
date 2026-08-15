@@ -1,6 +1,9 @@
 package game
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 var ErrGameOver = errors.New("game is over")
 
@@ -24,6 +27,14 @@ type Game struct {
 
 func (g *Game) Board(p Player) *Board {
 	return &g.Boards[p]
+}
+
+// Clone returns a copy sharing nothing with g, so it can be handed to another goroutine.
+func (g Game) Clone() Game {
+	for i := range g.Boards {
+		g.Boards[i].Ships = slices.Clone(g.Boards[i].Ships)
+	}
+	return g
 }
 
 // Fire resolves a shot by the player whose turn it is, against their opponent.

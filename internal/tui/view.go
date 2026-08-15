@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/divizn/ssh-battleships/internal/game"
+	"github.com/divizn/ssh-battleships/internal/lobby"
 )
 
 const (
@@ -16,45 +18,14 @@ const (
 	bodyWidth = colWidth*2 + len(gap)
 )
 
-// Two greys, both adaptive: the terminal background decides whether muted means darker or
-// lighter. dim carries text that still has to be read, water only ever suggests an edge.
-var (
-	grey    = lipgloss.AdaptiveColor{Light: "241", Dark: "248"}
-	greyer  = lipgloss.AdaptiveColor{Light: "249", Dark: "242"}
-	dim     = lipgloss.NewStyle().Foreground(grey)
-	water   = lipgloss.NewStyle().Foreground(greyer)
-	title   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	heading = lipgloss.NewStyle().Bold(true)
-	ship    = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	hurt    = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	hit     = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
-	sunk    = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Strikethrough(true)
-	legal   = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	broken  = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	here    = lipgloss.NewStyle().Reverse(true)
-	win     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
-	lose    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
-	box     = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(greyer).
-		Padding(0, 2)
-	column = lipgloss.NewStyle().Width(colWidth)
-	banner = lipgloss.NewStyle().Width(bodyWidth).Align(lipgloss.Center)
-	body   = lipgloss.NewStyle().Width(bodyWidth)
-)
-
 func (m Model) View() string {
-	frame := box.Render(body.Render(lipgloss.JoinVertical(lipgloss.Left,
-		banner.Render(title.Render("B A T T L E S H I P S")),
-		lipgloss.JoinHorizontal(lipgloss.Top,
-			m.side(you, "YOUR FLEET"),
-			gap,
-			m.side(foe, "ENEMY WATERS"),
-		),
+	frame := m.st.box.Render(m.st.body.Render(lipgloss.JoinVertical(lipgloss.Left,
+		m.st.banner.Render(m.st.title.Render("B A T T L E S H I P S")),
+		m.pane(),
 		"",
 		m.status(),
 		"",
-		dim.Render(m.help()),
+		m.st.dim.Render(m.help()),
 	)))
 
 	if m.width == 0 {
@@ -72,10 +43,81 @@ func (m Model) View() string {
 	return view
 }
 
+// pane is the tall middle of the frame, a fixed height so the border never jumps.
+func (m Model) pane() string {
+	var content string
+	switch {
+	case m.screen == menu:
+		content = m.menuPane()
+	case m.screen == joining:
+		content = m.joinPane()
+	case !m.live || m.snap.Phase == lobby.Waiting:
+		content = m.waitPane()
+	default:
+		content = lipgloss.JoinHorizontal(lipgloss.Top,
+			m.side(m.mine(), "YOUR FLEET"),
+			gap,
+			m.side(m.theirs(), enemyHeading(m.snap)),
+		)
+	}
+	return lipgloss.NewStyle().Width(bodyWidth).Height(paneHeight).Render(content)
+}
+
+// paneHeight is what a pair of boards needs: heading, letters, ten rows, a gap, two roster
+// lines and the tally.
+const paneHeight = 1 + 1 + game.Size + 1 + 2 + 1
+
+func enemyHeading(snap lobby.Snapshot) string {
+	if snap.Opponent.Name == "" {
+		return "ENEMY WATERS"
+	}
+	return strings.ToUpper(snap.Opponent.Name) + "'S WATERS"
+}
+
+func (m Model) menuPane() string {
+	rows := []string{m.st.heading.Render("Playing as " + m.me.Name), ""}
+	for i, item := range menuItems {
+		if choice(i) == m.choice {
+			rows = append(rows, m.st.chosen.Render("  > "+item))
+			continue
+		}
+		rows = append(rows, m.st.unchosen.Render("    "+item))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func (m Model) joinPane() string {
+	boxes := make([]string, 4)
+	for i := range boxes {
+		boxes[i] = m.st.dim.Render("_")
+		if i < len(m.typed) {
+			boxes[i] = m.st.code.Render(string(m.typed[i]))
+		}
+	}
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.st.heading.Render("Room code"),
+		"",
+		"  "+strings.Join(boxes, " "),
+	)
+}
+
+func (m Model) waitPane() string {
+	if !m.live {
+		return m.st.dim.Render("Opening the room...")
+	}
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.st.heading.Render("Your room is open."),
+		"",
+		"  "+m.st.code.Render(strings.Join(strings.Split(m.snap.Code, ""), " ")),
+		"",
+		m.st.dim.Render("  Tell a friend to pick \"Join with a code\" and type that in."),
+	)
+}
+
 // side stacks one player's grid, fleet roster and shot tally into a single column.
 func (m Model) side(p game.Player, name string) string {
-	return column.Render(lipgloss.JoinVertical(lipgloss.Left,
-		heading.Render(name),
+	return m.st.column.Render(lipgloss.JoinVertical(lipgloss.Left,
+		m.st.heading.Render(name),
 		m.grid(p),
 		"",
 		m.roster(p),
@@ -85,11 +127,11 @@ func (m Model) side(p game.Player, name string) string {
 
 func (m Model) grid(p game.Player) string {
 	var b strings.Builder
-	b.WriteString(dim.Render("    A B C D E F G H I J") + "\n")
+	b.WriteString(m.st.dim.Render("    A B C D E F G H I J") + "\n")
 
 	ghost := m.ghost(p)
 	for row := range game.Size {
-		b.WriteString(dim.Render(pad(row+1)) + " ")
+		b.WriteString(m.st.dim.Render(pad(row+1)) + " ")
 		for col := range game.Size {
 			b.WriteString(m.cell(p, game.Coord{Row: row, Col: col}, ghost))
 			if col < game.Size-1 {
@@ -102,26 +144,27 @@ func (m Model) grid(p game.Player) string {
 }
 
 func (m Model) cell(p game.Player, c game.Coord, ghost []game.Coord) string {
-	style, glyph := water, "·"
+	board := m.snap.Game.Board(p)
+	style, glyph := m.st.water, "·"
 	switch {
 	case slices.Contains(ghost, c):
-		style, glyph = legal, "#"
-		if m.g.Board(p).CanPlace(m.pending()) != nil {
-			style = broken
+		style, glyph = m.st.legal, "#"
+		if ship, ok := m.pending(); ok && board.CanPlace(ship) != nil {
+			style = m.st.broken
 		}
-	case m.g.Board(p).At(c) == game.Hit:
-		style, glyph = hit, "X"
-	case m.g.Board(p).At(c) == game.Miss:
-		style, glyph = dim, "o"
-	case m.g.Board(p).At(c) == game.Water:
+	case board.At(c) == game.Hit:
+		style, glyph = m.st.hit, "X"
+	case board.At(c) == game.Miss:
+		style, glyph = m.st.dim, "o"
+	case board.At(c) == game.Water:
 		glyph = "×"
 	default:
-		if _, ok := m.g.Board(p).ShipAt(c); ok && m.reveals(p) {
-			style, glyph = ship, "#"
+		if _, ok := board.ShipAt(c); ok && m.reveals(p) {
+			style, glyph = m.st.ship, "#"
 		}
 	}
 	if c == m.cursor && p == m.active() {
-		style = here
+		style = m.st.here
 	}
 	return style.Render(glyph)
 }
@@ -129,18 +172,19 @@ func (m Model) cell(p game.Player, c game.Coord, ghost []game.Coord) string {
 // roster names each ship behind a marker: afloat, damaged, or sunk. The marker carries the
 // state on its own, since plenty of SSH clients drop colour and strikethrough.
 func (m Model) roster(p game.Player) string {
+	board := m.snap.Game.Board(p)
 	names := make([]string, 0, len(game.Fleet))
 	for _, class := range game.Fleet {
-		s, ok := m.g.Board(p).Ship(class)
+		s, ok := board.Ship(class)
 		switch {
 		case !ok:
-			names = append(names, dim.Render("·"+class.String()))
+			names = append(names, m.st.dim.Render("·"+class.String()))
 		case s.Sunk():
-			names = append(names, broken.Render("x")+sunk.Render(class.String()))
-		case s.Hits > 0 && p == you:
-			names = append(names, hurt.Render("!"+class.String()))
+			names = append(names, m.st.broken.Render("x")+m.st.sunk.Render(class.String()))
+		case s.Hits > 0 && p == m.mine():
+			names = append(names, m.st.hurt.Render("!"+class.String()))
 		default:
-			names = append(names, water.Render("·")+class.String())
+			names = append(names, m.st.water.Render("·")+class.String())
 		}
 	}
 	return strings.Join(names[:3], "  ") + "\n" + strings.Join(names[3:], "  ")
@@ -148,16 +192,16 @@ func (m Model) roster(p game.Player) string {
 
 // tally summarises the shots taken at one board, named for whoever is firing them.
 func (m Model) tally(p game.Player) string {
-	fired, hits := m.g.Board(p).Tally()
+	fired, hits := m.snap.Game.Board(p).Tally()
 	pct := 0
 	if fired > 0 {
 		pct = hits * 100 / fired
 	}
 	who := "you:"
-	if p == you {
-		who = "bot:"
+	if p == m.mine() {
+		who = "them:"
 	}
-	return dim.Render(fmt.Sprintf("%s %s · %s · %d%%", who, plural(hits, "hit"), plural(fired, "shot"), pct))
+	return m.st.dim.Render(fmt.Sprintf("%s %s · %s · %d%%", who, plural(hits, "hit"), plural(fired, "shot"), pct))
 }
 
 func plural(n int, word string) string {
@@ -168,66 +212,139 @@ func plural(n int, word string) string {
 }
 
 func (m Model) status() string {
-	var first, second string
-	switch m.phase {
-	case placing:
-		first = fmt.Sprintf("Place your %s, %d of %d.", game.Fleet[m.next], m.next+1, len(game.Fleet))
-		second = dim.Render(map[bool]string{true: "vertical", false: "horizontal"}[m.vertical])
-	case over:
-		if m.g.Winner == you {
-			first = win.Render("You win. The enemy fleet is on the bottom.")
-		} else {
-			first = lose.Render("The bot wins. Your fleet is on the bottom.")
-		}
-		second = m.tally(foe)
-	default:
-		first = m.yourShot.render(true)
-		second = m.botShot.render(false)
+	first, second := m.headline(), m.st.dim.Render(m.notice)
+	if m.notice == "" {
+		second = m.subline()
 	}
 	return first + "\n" + second
 }
 
-func (s shotLog) render(mine bool) string {
-	if !s.set {
+func (m Model) headline() string {
+	switch {
+	case m.screen == menu:
+		return "Pick a game."
+	case m.screen == joining:
+		return "Type the four letters your friend was given."
+	case !m.live:
 		return ""
 	}
-	if s.note != "" {
-		return dim.Render(s.note)
-	}
 
-	who := map[bool]string{true: "You", false: "The bot"}[mine]
-	switch {
-	case s.res.Sunk:
-		style := lose
-		if mine {
-			style = win
+	switch m.snap.Phase {
+	case lobby.Waiting:
+		return "Waiting for someone to join."
+	case lobby.Placing:
+		if ship, ok := m.pending(); ok {
+			return fmt.Sprintf("Place your %s.", ship.Class)
 		}
-		return style.Render(fmt.Sprintf("%s SANK the %s at %s.", who, s.res.Class, label(s.at)))
-	case s.res.Hit:
-		return hurt.Render(fmt.Sprintf("%s hit the %s at %s.", who, s.res.Class, label(s.at)))
+		return "Fleet ready. Waiting for your opponent to place theirs."
+	case lobby.Over:
+		return m.result()
 	default:
-		return dim.Render(fmt.Sprintf("%s missed at %s.", who, label(s.at)))
+		return m.shot(m.snap.Last[m.mine()], true)
 	}
 }
 
-func (m Model) help() string {
-	switch m.phase {
-	case placing:
-		return "hjkl/arrows move · r rotate · enter place · R auto-place · q quit"
-	case over:
-		return "n new game · q quit"
+func (m Model) subline() string {
+	if m.screen != playing || !m.live {
+		return ""
+	}
+	switch m.snap.Phase {
+	case lobby.Placing:
+		return m.st.dim.Render(map[bool]string{true: "vertical", false: "horizontal"}[m.vertical])
+	case lobby.Firing:
+		if m.snap.Away {
+			return m.st.hurt.Render(fmt.Sprintf("%s dropped out, back within %s or they forfeit.",
+				m.snap.Opponent.Name, remaining(m.snap.AwayUntil)))
+		}
+		if m.snap.Game.Turn != m.mine() {
+			return m.st.dim.Render("Their go.")
+		}
+		return m.shot(m.snap.Last[m.theirs()], false)
+	case lobby.Over:
+		return m.tally(m.theirs())
+	}
+	return ""
+}
+
+func (m Model) result() string {
+	won := m.snap.Winner == m.mine()
+	switch {
+	case m.snap.Forfeit && won:
+		return m.st.win.Render(m.snap.Opponent.Name + " never came back. You win by forfeit.")
+	case m.snap.Forfeit:
+		return m.st.lose.Render("You forfeited that one.")
+	case won:
+		return m.st.win.Render("You win. Their fleet is on the bottom.")
 	default:
-		return "hjkl/arrows move · enter fire · q quit"
+		return m.st.lose.Render("You lose. Your fleet is on the bottom.")
+	}
+}
+
+func (m Model) shot(s lobby.Shot, mine bool) string {
+	if !s.Set {
+		return ""
+	}
+	who := m.snap.Opponent.Name
+	if mine {
+		who = "You"
+	}
+	switch {
+	case s.Res.Sunk:
+		style := m.st.lose
+		if mine {
+			style = m.st.win
+		}
+		return style.Render(fmt.Sprintf("%s SANK the %s at %s.", who, s.Res.Class, label(s.At)))
+	case s.Res.Hit:
+		return m.st.hurt.Render(fmt.Sprintf("%s hit the %s at %s.", who, s.Res.Class, label(s.At)))
+	default:
+		return m.st.dim.Render(fmt.Sprintf("%s missed at %s.", who, label(s.At)))
+	}
+}
+
+func remaining(deadline time.Time) string {
+	left := time.Until(deadline).Round(time.Second)
+	if left < 0 {
+		left = 0
+	}
+	return left.String()
+}
+
+func (m Model) help() string {
+	switch {
+	case m.screen == menu:
+		return "up/down choose · enter start · q quit"
+	case m.screen == joining:
+		return "type four letters · enter join · esc back"
+	case !m.live:
+		return "esc back · q quit"
+	}
+	switch m.snap.Phase {
+	case lobby.Placing:
+		if _, ok := m.pending(); ok {
+			return "hjkl/arrows move · r rotate · enter place · R auto-place · esc leave"
+		}
+		return "esc leave · q quit"
+	case lobby.Over:
+		return "n back to the menu · q quit"
+	case lobby.Waiting:
+		return "esc leave · q quit"
+	default:
+		return "hjkl/arrows move · enter fire · esc leave · q quit"
 	}
 }
 
 // ghost is the outline of the ship currently being positioned, empty outside placement.
 func (m Model) ghost(p game.Player) []game.Coord {
-	if m.phase != placing || p != you {
+	if m.snap.Phase != lobby.Placing || p != m.mine() {
+		return nil
+	}
+	ship, ok := m.pending()
+	if !ok {
 		return nil
 	}
 	var cells []game.Coord
-	for _, c := range m.pending().Cells() {
+	for _, c := range ship.Cells() {
 		if c.Valid() {
 			cells = append(cells, c)
 		}
@@ -236,15 +353,15 @@ func (m Model) ghost(p game.Player) []game.Coord {
 }
 
 func (m Model) reveals(p game.Player) bool {
-	return p == you || m.phase == over
+	return p == m.mine() || m.snap.Phase == lobby.Over
 }
 
 // active is the board the cursor sits on: your own while placing, the enemy's while firing.
 func (m Model) active() game.Player {
-	if m.phase == placing {
-		return you
+	if m.snap.Phase == lobby.Placing {
+		return m.mine()
 	}
-	return foe
+	return m.theirs()
 }
 
 func pad(n int) string {
