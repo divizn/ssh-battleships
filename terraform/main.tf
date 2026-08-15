@@ -24,7 +24,7 @@ variable "name" {
 
 variable "repo" {
   type    = string
-  default = "git@github.com:divizn/ssh-battleships.git"
+  default = "https://github.com/divizn/ssh-battleships.git"
 }
 
 variable "open_cron" {

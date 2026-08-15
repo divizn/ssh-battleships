@@ -20,19 +20,11 @@ mkswap /swapfile
 swapon /swapfile
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-install -m 700 -d /root/.ssh
-
 cat > /usr/local/bin/${name}-deploy <<'DEPLOY'
 #!/bin/bash
 set -euo pipefail
 
 app=/srv/${name}
-
-aws ssm get-parameter --name /${name}/deploy-key --with-decryption \
-  --query Parameter.Value --output text > /root/.ssh/deploy_key
-chmod 600 /root/.ssh/deploy_key
-ssh-keyscan -t ed25519 github.com > /root/.ssh/known_hosts
-export GIT_SSH_COMMAND="ssh -i /root/.ssh/deploy_key -o IdentitiesOnly=yes"
 
 if [ -d $app/.git ]; then
   git -C $app fetch --prune origin
