@@ -18,7 +18,10 @@ const (
 	// them out of Redis.
 	idPrefix = "SHA256:"
 
-	leaderboard = "leaderboard"
+	// The Upstash instance is shared with daily-quotes, which owns quote:<date>. Everything
+	// here stays under one namespace so the two can never grow into each other.
+	namespace   = "battleships:"
+	leaderboard = namespace + "leaderboard"
 )
 
 type Profile struct {
@@ -194,7 +197,7 @@ func (s *Store) do(cmds ...[]any) ([]json.RawMessage, error) {
 	return results, nil
 }
 
-func key(id string) string { return "player:" + id }
+func key(id string) string { return namespace + "player:" + id }
 
 func text(s *string) string {
 	if s == nil {

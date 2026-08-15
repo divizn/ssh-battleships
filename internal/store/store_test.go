@@ -72,8 +72,17 @@ func TestProfileReadsTheStoredRecord(t *testing.T) {
 	if want := (Profile{Name: "Alice", Wins: 3, Losses: 1, Games: 4}); got != want {
 		t.Errorf("Profile = %+v, want %+v", got, want)
 	}
-	if want := "HMGET player:" + alice + " name wins losses games"; f.command(t, 0, 0) != want {
+	if want := "HMGET " + key(alice) + " name wins losses games"; f.command(t, 0, 0) != want {
 		t.Errorf("sent %q, want %q", f.command(t, 0, 0), want)
+	}
+}
+
+// The instance is shared with daily-quotes, which owns quote:<date>.
+func TestEveryKeyIsNamespaced(t *testing.T) {
+	for _, k := range []string{key(alice), leaderboard} {
+		if !strings.HasPrefix(k, "battleships:") {
+			t.Errorf("key %q is loose in a shared database", k)
+		}
 	}
 }
 
@@ -94,7 +103,7 @@ func TestRankedResultTouchesTheLeaderboardAndBotGamesDoNot(t *testing.T) {
 	if got := len(ranked.sent[0]); got != 5 {
 		t.Fatalf("ranked win sent %d commands, want wins, games, zincrby, losses, games", got)
 	}
-	if want := "ZINCRBY leaderboard 1 " + alice; ranked.command(t, 0, 2) != want {
+	if want := "ZINCRBY " + leaderboard + " 1 " + alice; ranked.command(t, 0, 2) != want {
 		t.Errorf("sent %q, want %q", ranked.command(t, 0, 2), want)
 	}
 
