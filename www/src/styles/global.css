@@ -26,6 +26,9 @@
   --primary: #f4f4f5;
   --primary-foreground: #18181b;
 
+  /* space-separated so JS can build rgb(var(--particle-rgb) / alpha) */
+  --particle-rgb: 255 255 255;
+
   --glow-a: rgba(244, 244, 245, 0.35);
   --glow-b: rgba(244, 244, 245, 0.15);
   --glow-a-strong: rgba(244, 244, 245, 0.6);
@@ -46,6 +49,8 @@
   --muted: #f4f4f5;
   --primary: #18181b;
   --primary-foreground: #fafafa;
+
+  --particle-rgb: 24 24 27;
 
   --glow-a: rgba(24, 24, 27, 0.25);
   --glow-b: rgba(24, 24, 27, 0.1);

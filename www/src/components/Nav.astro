@@ -87,6 +87,7 @@
       localStorage.setItem("theme", "light");
     }
     paint();
+    window.dispatchEvent(new Event("themechange"));
   });
 
   paint();
