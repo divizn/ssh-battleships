@@ -22,25 +22,34 @@ Astro.response.headers.set("cache-control", "public, max-age=60");
 const command = "ssh play.phons.dev";
 
 const fleet = [
-  ["Carrier", 5],
-  ["Battleship", 4],
-  ["Cruiser", 3],
-  ["Submarine", 3],
-  ["Destroyer", 2],
+  ["Carrier", ["#####"]],
+  ["Battleship", ["####"]],
+  ["Cruiser", ["###"]],
+  ["Submarine", ["###"]],
+  ["Destroyer", ["##"]],
+  ["Corvette", ["#·", "#·", "##"]],
+  ["Tender", ["###", "·#·"]],
+  ["Cutter", ["#·", "##"]],
 ] as const;
 
 // a firing view mid-game, drawn with the glyphs the real board uses
 const preview = [
-  "··········",
-  "··×XXX×···",
-  "··×××××···",
-  "·o········",
-  "·····X··o·",
-  "·····X····",
-  "··o·······",
-  "·······o··",
-  "·XX·······",
-  "·····o····",
+  "················",
+  "···×××××········",
+  "···×XXX×········",
+  "···×××××········",
+  "················",
+  "·····o······X···",
+  "············X···",
+  "··o·············",
+  "················",
+  "·······o········",
+  "··XX············",
+  "···X············",
+  "················",
+  "·········o······",
+  "················",
+  "·····o·······o··",
 ];
 
 const tone = (glyph: string) =>
@@ -115,7 +124,7 @@ const description =
           <div
             role="img"
             aria-label="a game in progress"
-            class="grid w-fit grid-cols-10 gap-x-2 gap-y-1 rounded-lg border border-border bg-card p-5 font-mono text-sm"
+            class="grid w-fit grid-cols-16 gap-x-2 gap-y-1 rounded-lg border border-border bg-card p-5 font-mono text-sm"
           >
             {
               [...preview.join("")].map((glyph) => (
@@ -146,18 +155,21 @@ const description =
       <section class="flex flex-col gap-4">
         <h2 class="font-display text-2xl">Rules</h2>
         <ul class="flex flex-col gap-2 text-muted-foreground">
-          <li>Two 10x10 grids and a fleet of five ships, 17 cells in total.</li>
+          <li>Two 16x16 grids and a fleet of eight ships, 28 cells in total.</li>
           <li>Ships may not touch, corners included.</li>
+          <li>Not every ship is a line: two are L shaped and one is a T.</li>
           <li>Turns alternate strictly. A hit does not earn another shot.</li>
           <li>Sinking a ship reveals the water around it.</li>
-          <li>Sink all 17 cells to win.</li>
+          <li>Sink all 28 cells to win.</li>
         </ul>
-        <ul class="mt-2 grid grid-cols-2 gap-2 font-mono text-sm sm:grid-cols-5">
+        <ul class="mt-2 grid grid-cols-2 gap-2 font-mono text-sm sm:grid-cols-4">
           {
-            fleet.map(([name, length]) => (
+            fleet.map(([name, shape]) => (
               <li class="rounded-md border border-border bg-card px-3 py-2">
                 <span class="block text-foreground">{name}</span>
-                <span class="text-muted-foreground">{"#".repeat(length)}</span>
+                {shape.map((row) => (
+                  <span class="block text-muted-foreground">{row}</span>
+                ))}
               </li>
             ))
           }
