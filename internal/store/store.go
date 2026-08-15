@@ -22,6 +22,10 @@ const (
 	// here stays under one namespace so the two can never grow into each other.
 	namespace   = "battleships:"
 	leaderboard = namespace + "leaderboard"
+
+	// live expires on its own, so a server that is stopped, killed or unplugged stops
+	// claiming to be up without anyone having to tidy after it.
+	live = namespace + "live"
 )
 
 type Profile struct {
@@ -108,6 +112,26 @@ func (s *Store) Record(winner, loser string, ranked bool) error {
 		return nil
 	}
 	_, err := s.do(cmds...)
+	return err
+}
+
+// Heartbeat says the server is accepting games for the next ttl. The landing page reads this
+// key to decide whether to tell a visitor the game is worth connecting to.
+func (s *Store) Heartbeat(ttl time.Duration) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.do([]any{"SET", live, time.Now().Unix(), "EX", int(ttl.Seconds())})
+	return err
+}
+
+// Offline retires the heartbeat on a clean shutdown, so a scheduled stop shows on the page in
+// seconds rather than whenever the key happens to expire.
+func (s *Store) Offline() error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.do([]any{"DEL", live})
 	return err
 }
 

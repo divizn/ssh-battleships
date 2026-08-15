@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 const alice = "SHA256:alice"
@@ -154,6 +155,26 @@ func TestTopPairsScoresWithNames(t *testing.T) {
 	want := []Entry{{Name: "Alice", Wins: 5}, {Name: "anonymous", Wins: 2}}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("Top = %+v, want %+v", got, want)
+	}
+}
+
+func TestHeartbeatExpiresAndShutdownRetiresIt(t *testing.T) {
+	f := &fake{replies: []string{`[{"result":"OK"}]`, `[{"result":1}]`}}
+	db := f.serve(t)
+
+	if err := db.Heartbeat(150 * time.Second); err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+	got := f.command(t, 0, 0)
+	if !strings.HasPrefix(got, "SET "+live+" ") || !strings.HasSuffix(got, " EX 150") {
+		t.Errorf("sent %q, want a SET on %s expiring in 150 seconds", got, live)
+	}
+
+	if err := db.Offline(); err != nil {
+		t.Fatalf("Offline: %v", err)
+	}
+	if want := "DEL " + live; f.command(t, 1, 0) != want {
+		t.Errorf("sent %q, want %q", f.command(t, 1, 0), want)
 	}
 }
 

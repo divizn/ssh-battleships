@@ -74,6 +74,8 @@ func run(addr, hostKey string, local bool) error {
 		}
 	}()
 
+	stopBeating := heartbeat(db)
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	select {
@@ -81,6 +83,7 @@ func run(addr, hostKey string, local bool) error {
 		return err
 	case <-stop:
 	}
+	stopBeating()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -88,6 +91,44 @@ func run(addr, hostKey string, local bool) error {
 		return err
 	}
 	return nil
+}
+
+// heartbeat keeps the landing page's "live" badge honest, and returns the function that stops
+// it. The key outlives one beat but not two, so an instance that is stopped on a schedule, or
+// simply dies, shows as offline without anything else having to notice.
+func heartbeat(db *store.Store) func() {
+	const every = time.Minute
+
+	beat := func() {
+		if err := db.Heartbeat(150 * time.Second); err != nil {
+			fmt.Fprintln(os.Stderr, "heartbeat:", err)
+		}
+	}
+
+	done, stopped := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(stopped)
+		tick := time.NewTicker(every)
+		defer tick.Stop()
+		beat()
+		for {
+			select {
+			case <-tick.C:
+				beat()
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	// the DEL waits for the last beat to land, or it could be overwritten by it
+	return func() {
+		close(done)
+		<-stopped
+		if err := db.Offline(); err != nil {
+			fmt.Fprintln(os.Stderr, "retiring the heartbeat:", err)
+		}
+	}
 }
 
 // hostKeyPath writes the base64 SSH_HOST_KEY secret to disk and returns that path, so a

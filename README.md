@@ -20,41 +20,72 @@ remembers nothing.
 
 ## Deploying
 
-A single DigitalOcean droplet runs the container, which publishes the droplet's port 22 to the
-server's 2222 (`compose.yaml`). Three things bite if skipped.
+One EC2 `t4g.nano` runs the container, which publishes the instance's port 22 to the server's
+2222 (`compose.yaml`). Three things bite if skipped.
 
 **The host key must survive redeploys.** `SSH_HOST_KEY` holds one base64 ed25519 private key and
 the server writes it out at boot. Regenerate it and every returning player gets
 `REMOTE HOST IDENTIFICATION HAS CHANGED`.
 
-**The droplet's own sshd has to move off port 22 first**, or the container cannot bind it. Open
-the new port and confirm you can log in on it *before* closing the old one.
+**The address must be an Elastic IP.** A stopped instance loses its automatic public IP, and this
+one is stopped on purpose. The EIP is billed whether the instance runs or not.
 
 **`play.phons.dev` must be DNS-only in Cloudflare.** The orange cloud proxies HTTP and HTTPS
 only; SSH through it needs Spectrum.
 
-On the droplet, once:
+Launch Amazon Linux 2023 on arm64 with an instance profile carrying
+`AmazonSSMManagedInstanceCore`, a security group allowing inbound TCP 22 from `0.0.0.0/0` and
+`::/0`, and an Elastic IP. Administration is Session Manager (`aws ssm start-session --target
+i-...`), so no admin SSH port is ever open. Then, once:
 
 ```sh
-sed -i 's/^#\?Port 22$/Port 2200/' /etc/ssh/sshd_config && systemctl restart ssh
-ufw allow 2200/tcp && ufw allow 22/tcp && ufw enable
-curl -fsSL https://get.docker.com | sh
+systemctl disable --now sshd          # frees port 22 for the game
+dnf install -y docker git && systemctl enable --now docker
 
-# 512MB is enough to run the game but not to compile it
-fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+# 512MB runs the game but will not compile it
+dd if=/dev/zero of=/swapfile bs=1M count=2048 && chmod 600 /swapfile
+mkswap /swapfile && swapon /swapfile
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
 
-Then, per deploy:
+The repo is private, so give the instance a read-only GitHub deploy key. Then, per deploy:
 
 ```sh
 git pull
 docker compose up -d --build
 ```
 
-`.env` on the droplet holds `SSH_HOST_KEY` (`base64 -w0 .ssh/battleships_ed25519`) alongside the
-two Upstash variables. Point the `play.phons.dev` A record at the droplet's IP, grey cloud.
+`.env` on the instance holds `SSH_HOST_KEY` (`base64 -w0 .ssh/battleships_ed25519`) alongside the
+two Upstash variables. Point the `play.phons.dev` A record at the Elastic IP, grey cloud.
 
-Other projects share the box by publishing their own ports from their own compose files. A load
-balancer only earns its $12/mo once there is more than one droplet to balance across; until then
-it is a second thing to configure and no failover.
+## Opening hours
+
+The server does not run all week. `restart: unless-stopped` plus an enabled docker service means
+the game comes back on its own whenever the instance boots, so scheduling the box is the whole
+mechanism.
+
+```sh
+aws ec2 start-instances --instance-ids i-...   # open now
+aws ec2 stop-instances  --instance-ids i-...   # closed
+```
+
+For fixed hours, two EventBridge schedules against the universal EC2 target, no Lambda involved:
+
+```sh
+aws scheduler create-schedule --name battleships-open \
+  --schedule-expression "cron(0 18 ? * FRI-SUN *)" \
+  --schedule-expression-timezone Europe/London \
+  --flexible-time-window '{"Mode":"OFF"}' \
+  --target '{"Arn":"arn:aws:scheduler:::aws-sdk:ec2:startInstances","RoleArn":"<scheduler-role>","Input":"{\"InstanceIds\":[\"i-...\"]}"}'
+```
+
+The closing schedule is the same with `stopInstances` and its own cron. The role needs only
+`ec2:StartInstances` and `ec2:StopInstances`, trusted by `scheduler.amazonaws.com`.
+
+While it runs, the server writes a `battleships:live` key to Redis every minute with a 150 second
+expiry, and deletes it on a clean shutdown. That key is the only thing the landing page's live
+badge reads, so the badge follows reality whether the instance was stopped on schedule, stopped
+by hand, or fell over.
+
+Stopped hours cost nothing in compute. The floor is the Elastic IP and the 8GB volume, about
+$4.30/mo, and evenings-only running adds well under a dollar.
