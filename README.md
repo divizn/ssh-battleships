@@ -4,7 +4,14 @@ Battleships played over SSH: `ssh play.phons.dev`. Play the bot, or create a roo
 friend the four-letter code. Your public key fingerprint is your account, so there is nothing to
 sign up for and nothing to install.
 
-The landing page lives in a separate repo and is served at `battleships.phons.dev`.
+```
+cmd/ internal/   the game
+www/             the landing page at battleships.phons.dev, Astro on Cloudflare Workers
+terraform/       the AWS it runs on
+```
+
+The two halves deploy to different places and share only the Upstash database, so `www` is in
+`.dockerignore` and never reaches the game's image.
 
 ## Running it
 
@@ -33,30 +40,35 @@ one is stopped on purpose. The EIP is billed whether the instance runs or not.
 **`play.phons.dev` must be DNS-only in Cloudflare.** The orange cloud proxies HTTP and HTTPS
 only; SSH through it needs Spectrum.
 
-Launch Amazon Linux 2023 on arm64 with an instance profile carrying
-`AmazonSSMManagedInstanceCore`, a security group allowing inbound TCP 22 from `0.0.0.0/0` and
-`::/0`, and an Elastic IP. Administration is Session Manager (`aws ssm start-session --target
-i-...`), so no admin SSH port is ever open. Then, once:
+`terraform/` builds all of it: the instance, its Elastic IP, the security group, an instance
+profile for Session Manager, and the two schedules below. The secrets are deliberately not in
+there, so put them in Parameter Store first and they never touch Terraform state:
 
 ```sh
-systemctl disable --now sshd          # frees port 22 for the game
-dnf install -y docker git && systemctl enable --now docker
+aws ssm put-parameter --name /battleships/deploy-key --type SecureString \
+  --value "$(cat ~/.ssh/battleships_deploy_key)"      # read-only github deploy key
+aws ssm put-parameter --name /battleships/env --type SecureString --value "$(cat .env.production)"
 
-# 512MB runs the game but will not compile it
-dd if=/dev/zero of=/swapfile bs=1M count=2048 && chmod 600 /swapfile
-mkswap /swapfile && swapon /swapfile
-echo '/swapfile none swap sw 0 0' >> /etc/fstab
+cd terraform && terraform init && terraform apply
 ```
 
-The repo is private, so give the instance a read-only GitHub deploy key. Then, per deploy:
+`/battleships/env` is the `.env` the container reads: `SSH_HOST_KEY`
+(`base64 -w0 .ssh/battleships_ed25519`) plus the two Upstash variables. Point the
+`play.phons.dev` A record at the `address` output, grey cloud.
+
+Administration is Session Manager (`aws ssm start-session --target i-...`), so no admin SSH port
+is ever open, and the instance's own sshd is disabled to leave port 22 to the game.
+
+**Deploys happen at boot.** A oneshot unit pulls `main`, re-reads both parameters and runs
+`docker compose up -d --build`, so every scheduled start ships whatever has landed. There is no
+CI push, because the machine is off most of the week and most pushes would have nowhere to go. To
+ship while it is up:
 
 ```sh
-git pull
-docker compose up -d --build
+aws ssm send-command --instance-ids i-... \
+  --document-name AWS-RunShellScript \
+  --parameters 'commands=["/usr/local/bin/battleships-deploy"]'
 ```
-
-`.env` on the instance holds `SSH_HOST_KEY` (`base64 -w0 .ssh/battleships_ed25519`) alongside the
-two Upstash variables. Point the `play.phons.dev` A record at the Elastic IP, grey cloud.
 
 ## Opening hours
 
@@ -69,27 +81,11 @@ aws ec2 start-instances --instance-ids i-...   # open now
 aws ec2 stop-instances  --instance-ids i-...   # closed
 ```
 
-The published hours are Friday to Sunday, 6pm to 11pm UK time, which is two EventBridge schedules
-against the universal EC2 target, no Lambda involved:
-
-```sh
-aws scheduler create-schedule --name battleships-open \
-  --schedule-expression "cron(0 18 ? * FRI-SUN *)" \
-  --schedule-expression-timezone Europe/London \
-  --flexible-time-window '{"Mode":"OFF"}' \
-  --target '{"Arn":"arn:aws:scheduler:::aws-sdk:ec2:startInstances","RoleArn":"<scheduler-role>","Input":"{\"InstanceIds\":[\"i-...\"]}"}'
-
-aws scheduler create-schedule --name battleships-closed \
-  --schedule-expression "cron(0 23 ? * FRI-SUN *)" \
-  --schedule-expression-timezone Europe/London \
-  --flexible-time-window '{"Mode":"OFF"}' \
-  --target '{"Arn":"arn:aws:scheduler:::aws-sdk:ec2:stopInstances","RoleArn":"<scheduler-role>","Input":"{\"InstanceIds\":[\"i-...\"]}"}'
-```
-
-The timezone is named rather than an offset, so the hours stay put across BST and GMT. The role
-needs only `ec2:StartInstances` and `ec2:StopInstances`, trusted by `scheduler.amazonaws.com`.
-The hours are also written out in one sentence on the landing page, which is a separate repo:
-change them here and change them there.
+The published hours are Friday to Sunday, 6pm to 11pm UK time: two EventBridge schedules against
+the universal EC2 target, no Lambda involved, in `terraform/main.tf` as `open_cron` and
+`close_cron`. The timezone is named rather than an offset, so the hours hold across BST and GMT.
+They are also written out in one sentence in `www/src/pages/index.astro`, which nothing derives
+from the cron, so change both.
 
 A game still in progress at 11pm dies with the instance. Sessions are short and the audience is
 one person at a time, so the fix (draining, or refusing to stop while a room is live) is not

@@ -1,0 +1,5 @@
+www/
+terraform/
+.git/
+.ssh/
+.env
