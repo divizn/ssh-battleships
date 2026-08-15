@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 
-export type Entry = { name: string; wins: number };
+// rate is the player's overall win percentage, null until they have played a decided game
+export type Entry = { name: string; wins: number; rate: number | null };
 
 const secrets = env as {
   UPSTASH_REDIS_REST_URL?: string;
@@ -57,10 +58,18 @@ async function board(zset: string, n: number): Promise<Entry[]> {
 
   const ids = flat.filter((_, i) => i % 2 === 0);
   const wins = flat.filter((_, i) => i % 2 === 1).map(Number);
-  const names = await pipeline(ids.map((id) => ["HGET", `${namespace}player:${id}`, "name"]));
+  // the score is this board's wins, the hash carries the overall record the rate comes from
+  const profiles = await pipeline(
+    ids.map((id) => ["HMGET", `${namespace}player:${id}`, "name", "wins", "losses"]),
+  );
 
-  return ids.map((_, i) => ({
-    name: (names[i].result as string | null) || "anonymous",
-    wins: wins[i],
-  }));
+  return ids.map((_, i) => {
+    const [name, won, lost] = (profiles[i].result ?? []) as (string | null)[];
+    const decided = Number(won ?? 0) + Number(lost ?? 0);
+    return {
+      name: name || "anonymous",
+      wins: wins[i],
+      rate: decided > 0 ? Math.round((Number(won ?? 0) / decided) * 100) : null,
+    };
+  });
 }
