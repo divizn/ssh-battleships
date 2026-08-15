@@ -31,17 +31,20 @@ const fleet = [
 
 // a firing view mid-game, drawn with the glyphs the real board uses
 const preview = [
-  "· · · · · · · · · ·",
-  "· · × X X X × · · ·",
-  "· · × × × × × · · ·",
-  "· o · · · · · · · ·",
-  "· · · · · X · · o ·",
-  "· · · · · X · · · ·",
-  "· · o · · · · · · ·",
-  "· · · · · · · o · ·",
-  "· X X · · · · · · ·",
-  "· · · · · o · · · ·",
+  "··········",
+  "··×XXX×···",
+  "··×××××···",
+  "·o········",
+  "·····X··o·",
+  "·····X····",
+  "··o·······",
+  "·······o··",
+  "·XX·······",
+  "·····o····",
 ];
+
+const tone = (glyph: string) =>
+  glyph === "X" ? "text-hit" : glyph === "o" ? "text-muted-foreground" : "text-miss";
 
 const title = "Battleships over SSH";
 const description =
@@ -109,27 +112,33 @@ const description =
       <section class="flex flex-col gap-4">
         <h2 class="font-display text-2xl">The board</h2>
         <div class="flex flex-col gap-6 sm:flex-row sm:items-start">
-          <pre
-            class="overflow-x-auto rounded-lg border border-border bg-card p-5 font-mono text-sm leading-relaxed"
-            aria-label="a game in progress">{
-              preview.map((row) => (
-                <div>
-                  {[...row].map((glyph) => (
-                    <span
-                      class={
-                        glyph === "X" ? "text-hit" : glyph === "·" ? "text-miss" : undefined
-                      }>
-                      {glyph}
-                    </span>
-                  ))}
+          <div
+            role="img"
+            aria-label="a game in progress"
+            class="grid w-fit grid-cols-10 gap-x-2 gap-y-1 rounded-lg border border-border bg-card p-5 font-mono text-sm"
+          >
+            {
+              [...preview.join("")].map((glyph) => (
+                <span class:list={["text-center", tone(glyph)]}>{glyph}</span>
+              ))
+            }
+          </div>
+          <dl class="flex flex-col gap-2 font-mono text-sm text-muted-foreground">
+            {
+              (
+                [
+                  ["X", "hit"],
+                  ["o", "miss"],
+                  ["×", "water around a sunk ship"],
+                  ["·", "unknown"],
+                ] as const
+              ).map(([glyph, meaning]) => (
+                <div class="flex gap-3">
+                  <dt class:list={["w-4 text-center", tone(glyph)]}>{glyph}</dt>
+                  <dd>{meaning}</dd>
                 </div>
               ))
-            }</pre>
-          <dl class="flex flex-col gap-2 font-mono text-sm text-muted-foreground">
-            <div class="flex gap-3"><dt class="w-4 text-hit">X</dt><dd>hit</dd></div>
-            <div class="flex gap-3"><dt class="w-4">o</dt><dd>miss</dd></div>
-            <div class="flex gap-3"><dt class="w-4">×</dt><dd>water around a sunk ship</dd></div>
-            <div class="flex gap-3"><dt class="w-4">·</dt><dd>unknown</dd></div>
+            }
           </dl>
         </div>
       </section>
