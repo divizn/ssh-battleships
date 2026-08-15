@@ -14,7 +14,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/ssh"
-	"github.com/joho/godotenv"
+	// reads .env before main, leaving anything already in the environment alone
+	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/divizn/ssh-battleships/internal/lobby"
 	"github.com/divizn/ssh-battleships/internal/server"
@@ -35,9 +36,6 @@ func main() {
 }
 
 func run(addr, hostKey string, local bool) error {
-	// Load leaves anything already in the environment alone, so Fly's secrets win and the
-	// missing file in production is not an error.
-	godotenv.Load()
 	db := store.New(os.Getenv("UPSTASH_REDIS_REST_URL"), os.Getenv("UPSTASH_REDIS_REST_TOKEN"))
 	if db == nil {
 		fmt.Fprintln(os.Stderr, "no redis configured, names and scores will not be kept")
