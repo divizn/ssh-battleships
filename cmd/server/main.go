@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -53,7 +56,12 @@ func run(addr, hostKey string, local bool) error {
 		return err
 	}
 
-	s, err := server.New(addr, hostKey, games, db)
+	keyPath, err := hostKeyPath(hostKey)
+	if err != nil {
+		return err
+	}
+
+	s, err := server.New(addr, keyPath, games, db)
 	if err != nil {
 		return err
 	}
@@ -80,6 +88,21 @@ func run(addr, hostKey string, local bool) error {
 		return err
 	}
 	return nil
+}
+
+// hostKeyPath writes the base64 SSH_HOST_KEY secret to disk and returns that path, so a
+// deploy that has no persistent volume still presents the same key it did last time.
+func hostKeyPath(path string) (string, error) {
+	secret := os.Getenv("SSH_HOST_KEY")
+	if secret == "" {
+		return path, nil
+	}
+	pem, err := base64.StdEncoding.DecodeString(strings.TrimSpace(secret))
+	if err != nil {
+		return "", fmt.Errorf("SSH_HOST_KEY is not base64: %w", err)
+	}
+	f := filepath.Join(os.TempDir(), "battleships_host_key")
+	return f, os.WriteFile(f, pem, 0o600)
 }
 
 func me() lobby.Player {
