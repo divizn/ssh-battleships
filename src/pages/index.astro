@@ -1,17 +1,21 @@
 ---
 import "@/styles/global.css";
-import { top, type Entry } from "@/lib/leaderboard";
+import { isLive, top, type Entry } from "@/lib/leaderboard";
 
 export const prerender = false;
 
 let board: Entry[] = [];
+let live = false;
 let down = false;
 try {
-  board = await top(10);
+  [board, live] = await Promise.all([top(10), isLive()]);
 } catch (err) {
-  console.error("leaderboard:", err);
+  console.error("redis:", err);
   down = true;
 }
+
+// the hours the server is scheduled for, one sentence to edit when they change
+const hours = "It is usually up on Friday, Saturday and Sunday evenings.";
 
 Astro.response.headers.set("cache-control", "public, max-age=60");
 
@@ -58,7 +62,20 @@ const description =
   <body class="antialiased">
     <main class="mx-auto flex max-w-3xl flex-col gap-16 px-6 py-20 sm:py-28">
       <header class="animate-fade-in flex flex-col gap-6">
-        <h1 class="font-display text-5xl tracking-tight sm:text-6xl">Battleships</h1>
+        <div class="flex flex-wrap items-center gap-4">
+          <h1 class="font-display text-5xl tracking-tight sm:text-6xl">Battleships</h1>
+          <p
+            class="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs text-muted-foreground"
+          >
+            <span
+              aria-hidden="true"
+              class:list={[
+                "h-2 w-2 rounded-full",
+                live ? "animate-pulse bg-live" : "bg-miss",
+              ]}></span>
+            {live ? "server up" : "server asleep"}
+          </p>
+        </div>
         <p class="max-w-xl text-lg text-muted-foreground">
           Played in your terminal, over SSH. No signup, no client to install: your public key is
           your account.
@@ -79,6 +96,14 @@ const description =
             copy
           </button>
         </div>
+
+        {
+          !live && (
+            <p class="text-sm text-muted-foreground">
+              The server is asleep, so that command will not connect right now. {hours}
+            </p>
+          )
+        }
       </header>
 
       <section class="flex flex-col gap-4">

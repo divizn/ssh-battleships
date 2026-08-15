@@ -20,6 +20,7 @@
 
   --hit: #f87171;
   --miss: #52525b;
+  --live: #34d399;
 }
 
 @theme inline {
@@ -35,6 +36,7 @@
   --color-muted: var(--muted);
   --color-hit: var(--hit);
   --color-miss: var(--miss);
+  --color-live: var(--live);
 
   --animate-fade-in: fade-in 1s ease-out both;
   --animate-blink: blink 1.1s steps(2, start) infinite;

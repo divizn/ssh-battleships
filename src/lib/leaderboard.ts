@@ -29,6 +29,15 @@ async function pipeline(cmds: unknown[][]): Promise<Reply[]> {
   return replies;
 }
 
+// live is written by the game server every minute and expires in 150 seconds, so an instance
+// that was stopped on schedule, stopped by hand or simply died all read the same here.
+export async function isLive(): Promise<boolean> {
+  if (!secrets.UPSTASH_REDIS_REST_URL || !secrets.UPSTASH_REDIS_REST_TOKEN) return false;
+
+  const [beat] = await pipeline([["GET", `${namespace}live`]]);
+  return beat.result !== null;
+}
+
 export async function top(n: number): Promise<Entry[]> {
   if (!secrets.UPSTASH_REDIS_REST_URL || !secrets.UPSTASH_REDIS_REST_TOKEN) return [];
 
