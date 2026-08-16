@@ -328,10 +328,20 @@ func (m Model) leave(notice string) (Model, tea.Cmd) {
 }
 
 func (m Model) quit() tea.Cmd {
-	if m.sess != nil {
-		m.sess.Close()
-	}
 	return tea.Quit
+}
+
+// CloseOnQuit hands the room back when the program ends, and belongs in tea.WithFilter. A
+// connection that dies takes its program with it without ever reaching Update, so this is the
+// only place both a typed q and a dropped connection pass through. The seat itself is held for
+// the grace period either way: the player takes it back with the room code.
+func CloseOnQuit(m tea.Model, msg tea.Msg) tea.Msg {
+	if _, quitting := msg.(tea.QuitMsg); quitting {
+		if mm, ok := m.(Model); ok && mm.sess != nil {
+			mm.sess.Close()
+		}
+	}
+	return msg
 }
 
 func listen(s *lobby.Session) tea.Cmd {

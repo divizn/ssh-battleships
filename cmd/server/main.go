@@ -52,7 +52,7 @@ func run(addr, hostKey string, local bool) error {
 	}
 
 	if local {
-		_, err := tea.NewProgram(tui.New(games, db, me()), tea.WithAltScreen()).Run()
+		_, err := tea.NewProgram(tui.New(games, db, me()), tea.WithAltScreen(), tea.WithFilter(tui.CloseOnQuit)).Run()
 		return err
 	}
 
