@@ -16,20 +16,3 @@ variable "repo" {
   default     = "https://github.com/divizn/ssh-battleships.git"
 }
 
-variable "open_cron" {
-  description = "when the instance starts"
-  type        = string
-  default     = "cron(0 18 ? * FRI-SUN *)"
-}
-
-variable "close_cron" {
-  description = "when the instance stops"
-  type        = string
-  default     = "cron(0 23 ? * FRI-SUN *)"
-}
-
-variable "timezone" {
-  description = "named rather than an offset, so the hours hold across BST and GMT"
-  type        = string
-  default     = "Europe/London"
-}

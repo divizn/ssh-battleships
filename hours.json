@@ -1,0 +1,6 @@
+{
+  "days": ["Friday", "Saturday", "Sunday"],
+  "open": 15,
+  "close": 23,
+  "timezone": "Europe/London"
+}
