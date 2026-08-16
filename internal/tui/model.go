@@ -126,6 +126,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case lobby.Snapshot:
 		m.bell = sunkSince(m.snap, msg) && m.live
+		if msg.Game.Turn != m.snap.Game.Turn {
+			m.notice = ""
+		}
 		m.snap, m.live = msg, true
 		return m, listen(m.sess)
 

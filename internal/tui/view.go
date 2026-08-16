@@ -291,11 +291,26 @@ func plural(n int, word string) string {
 }
 
 func (m Model) status() string {
-	first, second := m.headline(), m.st.dim.Render(m.notice)
-	if m.notice == "" {
-		second = m.subline()
+	second := m.subline()
+	if m.notice != "" {
+		second = m.st.dim.Render(m.notice)
+		if badge := m.badge(); badge != "" {
+			second = badge + " " + second
+		}
 	}
-	return first + "\n" + second
+	return m.headline() + "\n" + second
+}
+
+// badge names whose go it is. It shares its line with the notice, so it is rendered
+// alongside one rather than being replaced by it.
+func (m Model) badge() string {
+	if m.screen != playing || !m.live || m.snap.Phase != lobby.Firing || m.snap.Away {
+		return ""
+	}
+	if m.snap.Game.Turn != m.mine() {
+		return m.st.theirs.Render("THEIR GO")
+	}
+	return m.st.yours.Render("YOUR GO")
 }
 
 func (m Model) headline() string {
@@ -339,10 +354,7 @@ func (m Model) subline() string {
 			return m.st.hurt.Render(fmt.Sprintf("%s dropped out, back within %s or they forfeit.",
 				m.snap.Opponent.Name, remaining(m.snap.AwayUntil)))
 		}
-		if m.snap.Game.Turn != m.mine() {
-			return m.st.theirs.Render("THEIR GO") + " " + m.st.dim.Render(m.shot(m.snap.Last[m.theirs()], false))
-		}
-		return m.st.yours.Render("YOUR GO") + " " + m.st.dim.Render(m.shot(m.snap.Last[m.theirs()], false))
+		return m.badge() + " " + m.st.dim.Render(m.shot(m.snap.Last[m.theirs()], false))
 	case lobby.Over:
 		return m.tally(m.theirs())
 	}

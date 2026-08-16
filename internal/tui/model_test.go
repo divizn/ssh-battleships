@@ -385,3 +385,49 @@ func TestWhoseGoItIsIsStated(t *testing.T) {
 		t.Fatalf("the bot game did not start on the player's turn")
 	}
 }
+
+func TestWhoseGoItIsSurvivesATellingOff(t *testing.T) {
+	host, guest := twoPlayerGame(t)
+
+	guest = press(guest, "enter")
+	if got := guest.(Model).notice; got == "" {
+		t.Fatalf("firing out of turn drew no notice")
+	}
+	if got := guest.View(); !strings.Contains(got, "THEIR GO") {
+		t.Errorf("the notice hid whose go it is:\n%s", got)
+	}
+
+	host = settle(t, press(host, "enter"))
+	guest = settle(t, guest)
+
+	gm := guest.(Model)
+	if gm.snap.Game.Turn != gm.mine() {
+		t.Fatalf("the go did not come back to the guest")
+	}
+	if got := guest.View(); !strings.Contains(got, "YOUR GO") {
+		t.Errorf("the stale notice is still hiding whose go it is:\n%s", got)
+	}
+	if gm.notice != "" {
+		t.Errorf("notice = %q, want the telling-off dropped now the go has changed", gm.notice)
+	}
+}
+
+// twoPlayerGame walks a host and a guest into a shared room with both fleets down.
+func twoPlayerGame(t *testing.T) (host, guest tea.Model) {
+	t.Helper()
+	l := lobby.New()
+	host = settle(t, press(newModel(l, "Alice"), "down", "enter"))
+
+	code := strings.Split(strings.ToLower(host.(Model).snap.Code), "")
+	guest = press(newModel(l, "Bob"), "down", "down", "enter")
+	guest = settle(t, press(guest, append(code, "enter")...))
+
+	guest = settle(t, press(guest, "R"))
+	host = settle(t, press(settle(t, host), "R"))
+	guest = settle(t, guest)
+
+	if got := host.(Model).snap.Phase; got != lobby.Firing {
+		t.Fatalf("phase after both fleets are down = %v, want Firing", got)
+	}
+	return host, guest
+}
