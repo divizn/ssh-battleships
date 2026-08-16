@@ -281,19 +281,19 @@ func (rm *room) fire(seat game.Player, c game.Coord) error {
 	return nil
 }
 
+// botTurn plays the bot's whole go: a hit earns it another shot, so it fires until it misses.
 func (rm *room) botTurn() {
-	if rm.bot == nil || rm.phase != Firing || rm.game.Turn != game.P2 {
-		return
-	}
-	c := rm.bot.NextShot()
-	res, err := rm.game.Fire(c)
-	if err != nil {
-		return
-	}
-	rm.bot.Record(c, res)
-	rm.last[game.P2] = Shot{Set: true, At: c, Res: res}
-	if rm.game.Over {
-		rm.finish()
+	for rm.bot != nil && rm.phase == Firing && rm.game.Turn == game.P2 {
+		c := rm.bot.NextShot()
+		res, err := rm.game.Fire(c)
+		if err != nil {
+			return
+		}
+		rm.bot.Record(c, res)
+		rm.last[game.P2] = Shot{Set: true, At: c, Res: res}
+		if rm.game.Over {
+			rm.finish()
+		}
 	}
 }
 
