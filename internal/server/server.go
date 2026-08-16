@@ -36,7 +36,7 @@ func New(addr, hostKey string, l *lobby.Lobby, db *store.Store) (*ssh.Server, er
 func handler(l *lobby.Lobby, db *store.Store) bubbletea.Handler {
 	return func(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 		model := tui.NewWithRenderer(l, db, playerFor(s), bubbletea.MakeRenderer(s))
-		return model, []tea.ProgramOption{tea.WithAltScreen()}
+		return model, []tea.ProgramOption{tea.WithAltScreen(), tea.WithFilter(tui.CloseOnQuit)}
 	}
 }
 

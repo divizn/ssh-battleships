@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -429,7 +430,7 @@ func TestAHitEarnsAnotherGo(t *testing.T) {
 }
 
 func TestWhoseGoItIsSurvivesATellingOff(t *testing.T) {
-	host, guest := twoPlayerGame(t)
+	_, host, guest := twoPlayerGame(t)
 
 	guest = press(guest, "enter")
 	if got := guest.(Model).notice; got == "" {
@@ -454,10 +455,44 @@ func TestWhoseGoItIsSurvivesATellingOff(t *testing.T) {
 	}
 }
 
+func TestADroppedPlayerRejoinsTheirGameWithTheCode(t *testing.T) {
+	l, host, guest := twoPlayerGame(t)
+	code := host.(Model).snap.Code
+	gm := guest.(Model)
+	before := gm.snap.Game.Board(game.P2).Ships
+
+	// the connection dies: Bubble Tea filters a quit through the last model and nothing else
+	// ever reaches it.
+	CloseOnQuit(guest, tea.QuitMsg{})
+
+	snap := settle(t, host).(Model).snap
+	if !snap.Away || snap.Phase != lobby.Firing {
+		t.Fatalf("away = %v phase = %v, want the game held open for the dropped player",
+			snap.Away, snap.Phase)
+	}
+
+	back := press(newModel(l, "Bob"), "down", "down", "enter")
+	back = settle(t, press(back, append(strings.Split(strings.ToLower(code), ""), "enter")...))
+
+	bm := back.(Model)
+	if bm.screen != playing {
+		t.Fatalf("screen = %v after rejoining, notice %q", bm.screen, bm.notice)
+	}
+	if bm.snap.Seat != game.P2 || bm.snap.Phase != lobby.Firing {
+		t.Fatalf("seated at %v in phase %v, want P2 mid-game", bm.snap.Seat, bm.snap.Phase)
+	}
+	if got := bm.snap.Game.Board(game.P2).Ships; !slices.Equal(got, before) {
+		t.Errorf("fleet after rejoining = %v, want the one that was placed", got)
+	}
+	if settle(t, host).(Model).snap.Away {
+		t.Error("the host still thinks the guest is away")
+	}
+}
+
 // twoPlayerGame walks a host and a guest into a shared room with both fleets down.
-func twoPlayerGame(t *testing.T) (host, guest tea.Model) {
+func twoPlayerGame(t *testing.T) (l *lobby.Lobby, host, guest tea.Model) {
 	t.Helper()
-	l := lobby.New()
+	l = lobby.New()
 	host = settle(t, press(newModel(l, "Alice"), "down", "enter"))
 
 	code := strings.Split(strings.ToLower(host.(Model).snap.Code), "")
@@ -471,5 +506,5 @@ func twoPlayerGame(t *testing.T) (host, guest tea.Model) {
 	if got := host.(Model).snap.Phase; got != lobby.Firing {
 		t.Fatalf("phase after both fleets are down = %v, want Firing", got)
 	}
-	return host, guest
+	return l, host, guest
 }
