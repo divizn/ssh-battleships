@@ -91,7 +91,7 @@ const description =
         <div>
           <section class="animate-fade-in">
             <div class="flex flex-wrap items-center gap-4">
-              <h1 class="font-display animate-title-glow text-4xl text-foreground sm:text-5xl">
+              <h1 class="font-display animate-title-glow text-4xl text-accent sm:text-5xl">
                 Battleships
               </h1>
               <p
@@ -106,7 +106,7 @@ const description =
                   type="button"
                   aria-label="When is the server up?"
                   aria-describedby="hours-tip"
-                  class="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-border-strong text-[10px] duration-200 hover:border-foreground/40 hover:text-foreground"
+                  class="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-border-strong text-[10px] duration-200 hover:border-accent hover:text-foreground"
                 >
                   ?
                 </button>
@@ -137,7 +137,7 @@ const description =
                 id="copy"
                 type="button"
                 data-command={command}
-                class="ml-2 cursor-pointer rounded-md border border-border px-3 py-1 text-sm text-muted-foreground duration-200 hover:border-foreground/40 hover:text-foreground"
+                class="ml-2 cursor-pointer rounded-md border border-border px-3 py-1 text-sm text-muted-foreground duration-200 hover:border-accent hover:text-foreground"
               >
                 copy
               </button>
@@ -166,7 +166,7 @@ const description =
           </section>
 
           <section class="mt-16">
-            <h2 class="font-display text-2xl">The board</h2>
+            <h2 class="font-display text-accent text-2xl">The board</h2>
             <div class="mt-4 flex flex-col gap-6 sm:flex-row sm:items-start">
               <div
                 role="img"
@@ -193,7 +193,7 @@ const description =
           </section>
 
           <section class="mt-16">
-            <h2 class="font-display text-2xl">Rules</h2>
+            <h2 class="font-display text-accent text-2xl">Rules</h2>
             <ol
               class="mt-4 flex list-decimal flex-col gap-2 pl-5 text-muted-foreground marker:animate-text-glow marker:text-foreground"
             >
@@ -219,7 +219,7 @@ const description =
           </section>
 
           <section class="mt-16">
-            <h2 class="font-display text-2xl">Playing</h2>
+            <h2 class="font-display text-accent text-2xl">Playing</h2>
             <ul class="mt-4 flex flex-col gap-2 text-muted-foreground">
               <li>Play the bot, or create a room and give a friend the four-letter code.</li>
               <li>
@@ -238,7 +238,7 @@ const description =
         <aside
           class="mt-16 lg:sticky lg:top-8 lg:mt-0 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto"
         >
-          <h2 class="font-display text-2xl">Leaderboards</h2>
+          <h2 class="font-display text-accent text-2xl">Leaderboards</h2>
           <div class="mt-4">
             {
               down ? (
