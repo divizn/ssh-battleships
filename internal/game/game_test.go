@@ -244,7 +244,7 @@ func TestAutoPlaceKeepsManualPlacements(t *testing.T) {
 	}
 }
 
-func TestTurnAlternatesOnHitAndMiss(t *testing.T) {
+func TestAMissPassesTheTurnAndAHitEarnsAnother(t *testing.T) {
 	g := twoDestroyerGame(t)
 
 	if _, err := g.Fire(Coord{5, 5}); err != nil { // P1 misses
@@ -256,8 +256,14 @@ func TestTurnAlternatesOnHitAndMiss(t *testing.T) {
 	if _, err := g.Fire(Coord{0, 0}); err != nil { // P2 hits
 		t.Fatal(err)
 	}
+	if g.Turn != P2 {
+		t.Fatalf("turn after a hit = %v, want P2 to go again", g.Turn)
+	}
+	if _, err := g.Fire(Coord{5, 5}); err != nil { // P2 misses
+		t.Fatal(err)
+	}
 	if g.Turn != P1 {
-		t.Fatalf("turn after a hit = %v, want P1", g.Turn)
+		t.Fatalf("turn after the follow-up miss = %v, want P1", g.Turn)
 	}
 }
 
@@ -278,7 +284,7 @@ func TestFireHitsTheOpponentsBoard(t *testing.T) {
 func TestWinFreezesTheGame(t *testing.T) {
 	g := twoDestroyerGame(t)
 
-	for _, c := range []Coord{{0, 0}, {0, 0}, {0, 1}} { // P1, P2, P1
+	for _, c := range []Coord{{0, 0}, {0, 1}} { // P1 hits, so P1 again
 		if _, err := g.Fire(c); err != nil {
 			t.Fatalf("fire %v: %v", c, err)
 		}

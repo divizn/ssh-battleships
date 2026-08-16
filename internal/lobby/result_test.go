@@ -63,17 +63,6 @@ func cells(ships []game.Ship) []game.Coord {
 	return all
 }
 
-// safeCells are the bottom rows, which testFleet never reaches into.
-func safeCells() []game.Coord {
-	var all []game.Coord
-	for row := 8; row < game.Size; row++ {
-		for col := range game.Size {
-			all = append(all, game.Coord{Row: row, Col: col})
-		}
-	}
-	return all
-}
-
 func TestAWonGameIsReportedOnceAndCountsForTheLeaderboard(t *testing.T) {
 	l := New()
 	out := results(l)
@@ -86,16 +75,10 @@ func TestAWonGameIsReportedOnceAndCountsForTheLeaderboard(t *testing.T) {
 	placeFleet(t, guest)
 	await(t, host, "firing", func(s Snapshot) bool { return s.Phase == Firing })
 
-	targets, spare := cells(testFleet), safeCells()
-	for i, c := range targets {
+	// every shot is a hit, so the host never gives the go up.
+	for i, c := range cells(testFleet) {
 		if err := host.Fire(c); err != nil {
 			t.Fatalf("shot %d at %v: %v", i, c, err)
-		}
-		if i == len(targets)-1 {
-			break
-		}
-		if err := guest.Fire(spare[i]); err != nil {
-			t.Fatalf("reply %d at %v: %v", i, spare[i], err)
 		}
 	}
 

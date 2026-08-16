@@ -44,6 +44,28 @@ func bothReady(t *testing.T, a, b *Session) {
 	}
 }
 
+// water is an unshot cell with no ship on it, so firing there misses and the go passes over.
+// Fleets are placed at random, so a test that needs a miss has to look one up.
+func water(t *testing.T, b *game.Board) game.Coord {
+	t.Helper()
+	ship := map[game.Coord]bool{}
+	for _, s := range b.Ships {
+		for _, c := range s.Cells() {
+			ship[c] = true
+		}
+	}
+	for row := range game.Size {
+		for col := range game.Size {
+			c := game.Coord{Row: row, Col: col}
+			if !ship[c] && !b.At(c).Known() {
+				return c
+			}
+		}
+	}
+	t.Fatal("no unshot water left on the board")
+	return game.Coord{}
+}
+
 func TestBotRoomIsPlayableImmediately(t *testing.T) {
 	s, err := New().Bot(alice)
 	if err != nil {
@@ -60,7 +82,7 @@ func TestBotRoomIsPlayableImmediately(t *testing.T) {
 	}
 	snap = await(t, s, "firing", func(s Snapshot) bool { return s.Phase == Firing })
 
-	if err := s.Fire(game.Coord{Row: 0, Col: 0}); err != nil {
+	if err := s.Fire(water(t, snap.Game.Board(game.P2))); err != nil {
 		t.Fatal(err)
 	}
 	snap = await(t, s, "the bot to shoot back", func(s Snapshot) bool { return s.Last[game.P2].Set })
@@ -136,18 +158,18 @@ func TestOnlyTheSideWhoseTurnItIsCanFire(t *testing.T) {
 	guest, _ := l.Join(host.Code(), bob)
 	defer guest.Close()
 	bothReady(t, host, guest)
-	await(t, host, "firing", func(s Snapshot) bool { return s.Phase == Firing })
+	snap := await(t, host, "firing", func(s Snapshot) bool { return s.Phase == Firing })
 
 	if err := guest.Fire(game.Coord{Row: 0, Col: 0}); !errors.Is(err, ErrNotYourGo) {
 		t.Errorf("guest firing first got %v, want ErrNotYourGo", err)
 	}
-	if err := host.Fire(game.Coord{Row: 0, Col: 0}); err != nil {
+	if err := host.Fire(water(t, snap.Game.Board(game.P2))); err != nil {
 		t.Fatalf("host firing first: %v", err)
 	}
 	if err := host.Fire(game.Coord{Row: 1, Col: 1}); !errors.Is(err, ErrNotYourGo) {
 		t.Errorf("host firing twice got %v, want ErrNotYourGo", err)
 	}
-	if err := guest.Fire(game.Coord{Row: 0, Col: 0}); err != nil {
+	if err := guest.Fire(water(t, snap.Game.Board(game.P1))); err != nil {
 		t.Fatalf("guest firing second: %v", err)
 	}
 }

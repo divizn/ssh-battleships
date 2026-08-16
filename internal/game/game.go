@@ -37,7 +37,8 @@ func (g Game) Clone() Game {
 	return g
 }
 
-// Fire resolves a shot by the player whose turn it is, against their opponent.
+// Fire resolves a shot by the player whose turn it is, against their opponent. A hit earns
+// another go, so the turn only passes on a miss.
 func (g *Game) Fire(c Coord) (Result, error) {
 	if g.Over {
 		return Result{}, ErrGameOver
@@ -52,6 +53,8 @@ func (g *Game) Fire(c Coord) (Result, error) {
 		g.Winner = g.Turn
 		return res, nil
 	}
-	g.Turn = g.Turn.Other()
+	if !res.Hit {
+		g.Turn = g.Turn.Other()
+	}
 	return res, nil
 }

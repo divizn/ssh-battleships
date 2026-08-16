@@ -156,8 +156,33 @@ func TestTouchingPlacementIsRefusedWithAReason(t *testing.T) {
 	}
 }
 
+// aim points the cursor at an unshot cell on the enemy board, one carrying a ship if hit is
+// set. Fleets are placed at random, so a test that needs a hit or a miss has to look first.
+func aim(t *testing.T, m tea.Model, hit bool) tea.Model {
+	t.Helper()
+	mm := m.(Model)
+	b := mm.snap.Game.Board(mm.theirs())
+	ship := map[game.Coord]bool{}
+	for _, s := range b.Ships {
+		for _, c := range s.Cells() {
+			ship[c] = true
+		}
+	}
+	for row := range game.Size {
+		for col := range game.Size {
+			c := game.Coord{Row: row, Col: col}
+			if ship[c] == hit && !b.At(c).Known() {
+				mm.cursor = c
+				return mm
+			}
+		}
+	}
+	t.Fatalf("no unshot cell left with hit = %v", hit)
+	return m
+}
+
 func TestFiringDrawsAReplyFromTheBot(t *testing.T) {
-	m := settle(t, press(botGame(t), "enter")).(Model)
+	m := settle(t, press(aim(t, botGame(t), false), "enter")).(Model)
 
 	if !m.snap.Last[m.mine()].Set {
 		t.Error("your own shot was not recorded")
@@ -386,6 +411,23 @@ func TestWhoseGoItIsIsStated(t *testing.T) {
 	}
 }
 
+func TestAHitEarnsAnotherGo(t *testing.T) {
+	m := settle(t, press(aim(t, botGame(t), true), "enter")).(Model)
+
+	if !m.snap.Last[m.mine()].Res.Hit {
+		t.Fatalf("the aimed shot missed")
+	}
+	if m.snap.Game.Turn != m.mine() {
+		t.Errorf("turn = %v, want another go after the hit", m.snap.Game.Turn)
+	}
+	if m.snap.Last[m.theirs()].Set {
+		t.Error("the bot shot back before its go came round")
+	}
+	if got := m.View(); !strings.Contains(got, "YOUR GO") {
+		t.Errorf("the player is not told they go again:\n%s", got)
+	}
+}
+
 func TestWhoseGoItIsSurvivesATellingOff(t *testing.T) {
 	host, guest := twoPlayerGame(t)
 
@@ -397,7 +439,7 @@ func TestWhoseGoItIsSurvivesATellingOff(t *testing.T) {
 		t.Errorf("the notice hid whose go it is:\n%s", got)
 	}
 
-	host = settle(t, press(host, "enter"))
+	host = settle(t, press(aim(t, host, false), "enter"))
 	guest = settle(t, guest)
 
 	gm := guest.(Model)
