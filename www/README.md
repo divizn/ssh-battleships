@@ -10,14 +10,14 @@ and renders without a leaderboard if Redis is missing or unreachable.
 The game server does not run all week. It writes `battleships:live` every minute with a 150
 second expiry, which is what the badge at the top of the page reads, so the badge can lag reality
 by up to a minute of page cache. The hours live in `../hours.json`, which both the sentence on the
-page and the EventBridge schedule in `../terraform` read, so changing them means editing that file
-and then redeploying both.
+page and the EventBridge schedule in `../terraform` read, so changing them means editing that file,
+applying the terraform, and pushing (the page rebuilds itself on push).
 
 ```sh
 pnpm install
 pnpm dev       # needs .dev.vars, below
 pnpm preview   # build, then wrangler dev
-pnpm deploy    # build, then wrangler deploy
+pnpm run deploy # build, then wrangler deploy, only to bypass Workers Builds
 ```
 
 Locally the credentials go in `.dev.vars` (gitignored):
