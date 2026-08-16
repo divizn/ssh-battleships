@@ -1,3 +1,9 @@
+locals {
+  # opening hours, shared with the website
+  hours = jsondecode(file("${path.module}/../hours.json"))
+  days  = join(",", [for d in local.hours.days : upper(substr(d, 0, 3))])
+}
+
 provider "aws" {
   region = var.region
 
@@ -174,8 +180,8 @@ resource "aws_iam_role_policy" "power" {
 
 resource "aws_scheduler_schedule" "open" {
   name                         = "${var.name}-open"
-  schedule_expression          = var.open_cron
-  schedule_expression_timezone = var.timezone
+  schedule_expression          = "cron(0 ${local.hours.open} ? * ${local.days} *)"
+  schedule_expression_timezone = local.hours.timezone
 
   flexible_time_window {
     mode = "OFF"
@@ -190,8 +196,8 @@ resource "aws_scheduler_schedule" "open" {
 
 resource "aws_scheduler_schedule" "close" {
   name                         = "${var.name}-close"
-  schedule_expression          = var.close_cron
-  schedule_expression_timezone = var.timezone
+  schedule_expression          = "cron(0 ${local.hours.close} ? * ${local.days} *)"
+  schedule_expression_timezone = local.hours.timezone
 
   flexible_time_window {
     mode = "OFF"
