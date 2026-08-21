@@ -3,6 +3,7 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 import Particles from "@/components/Particles.astro";
 import { isLive, top, topTotal, type Entry } from "@/lib/leaderboard";
 import { hours } from "@/lib/hours";
+import { badge, type Status } from "@/lib/status";
 
 export const prerender = false;
 
@@ -16,6 +17,8 @@ try {
   console.error("redis:", err);
   down = true;
 }
+
+const status: Status = down ? "unknown" : live ? "up" : "asleep";
 
 const boards = [
   {
@@ -95,13 +98,26 @@ const description =
                 Battleships
               </h1>
               <p
-                class="group relative flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs text-muted-foreground"
+                id="status"
+                class:list={[
+                  "group relative flex items-center gap-2 rounded-full border bg-card px-3 py-1 font-mono text-xs text-muted-foreground",
+                  badge[status].border,
+                ]}
               >
-                <span
-                  aria-hidden="true"
-                  class:list={["h-2 w-2 rounded-full", live ? "animate-pulse bg-live" : "bg-miss"]}
-                ></span>
-                {live ? "server up" : "server asleep"}
+                <span aria-hidden="true" class="relative flex h-2 w-2">
+                  <span
+                    id="status-ring"
+                    class:list={[
+                      "absolute inline-flex h-full w-full animate-ping rounded-full bg-live opacity-75 motion-reduce:hidden",
+                      status !== "up" && "invisible",
+                    ]}
+                  />
+                  <span
+                    id="status-dot"
+                    class:list={["h-2 w-2 rounded-full", badge[status].dot]}
+                  />
+                </span>
+                <span id="status-text">{badge[status].label}</span>
                 <button
                   type="button"
                   aria-label="When is the server up?"
@@ -156,13 +172,12 @@ const description =
               </p>
             </div>
 
-            {
-              !live && (
-                <p class="mt-4 text-sm text-muted-foreground">
-                  The server is asleep, so that command will not connect right now. {hours}
-                </p>
-              )
-            }
+            <p
+              id="status-asleep"
+              class:list={["mt-4 text-sm text-muted-foreground", status !== "asleep" && "hidden"]}
+            >
+              The server is asleep, so that command will not connect right now. {hours}
+            </p>
           </section>
 
           <section class="mt-16">
@@ -291,4 +306,47 @@ const description =
     button.textContent = "copied";
     setTimeout(() => (button.textContent = "copy"), 1500);
   });
+</script>
+
+<script>
+  import { badge, type Status } from "@/lib/status";
+
+  const box = document.getElementById("status");
+  const ring = document.getElementById("status-ring");
+  const dot = document.getElementById("status-dot");
+  const text = document.getElementById("status-text");
+  const asleep = document.getElementById("status-asleep");
+
+  // removing every state's classes before adding one keeps two states sharing a class safe
+  function paint(next: Status) {
+    for (const style of Object.values(badge)) {
+      box?.classList.remove(style.border);
+      dot?.classList.remove(style.dot);
+    }
+    box?.classList.add(badge[next].border);
+    dot?.classList.add(badge[next].dot);
+    ring?.classList.toggle("invisible", next !== "up");
+    asleep?.classList.toggle("hidden", next !== "asleep");
+    if (text) text.textContent = badge[next].label;
+  }
+
+  let failures = 0;
+
+  // a hidden tab costs nothing, and is repainted the moment it is looked at again
+  async function check() {
+    if (document.hidden) return;
+    try {
+      const res = await fetch("/api/live");
+      if (!res.ok) throw new Error(String(res.status));
+      const { live } = (await res.json()) as { live: boolean };
+      failures = 0;
+      paint(live ? "up" : "asleep");
+    } catch {
+      // one blip holds the last state, a second means the heartbeat genuinely cannot be read
+      if (++failures > 1) paint("unknown");
+    }
+  }
+
+  setInterval(check, 60_000);
+  document.addEventListener("visibilitychange", check);
 </script>
