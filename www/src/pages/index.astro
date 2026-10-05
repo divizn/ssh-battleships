@@ -2,7 +2,6 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Particles from "@/components/Particles.astro";
 import { isLive, top, topTotal, type Entry } from "@/lib/leaderboard";
-import { hours } from "@/lib/hours";
 import { badge, type Status } from "@/lib/status";
 
 export const prerender = false;
@@ -38,6 +37,12 @@ const boards = [
 Astro.response.headers.set("cache-control", "public, max-age=60");
 
 const command = "ssh play.phons.dev";
+
+const repo = "https://github.com/divizn/ssh-battleships";
+const request = `${repo}/issues/new?${new URLSearchParams({
+  title: "Request a game",
+  body: "I'd like to play. Roughly when:",
+})}`;
 
 const fleet = [
   ["Carrier", ["#####"]],
@@ -131,9 +136,9 @@ const description =
                   role="tooltip"
                   class="pointer-events-none absolute top-full left-0 z-10 mt-2 w-64 rounded-md border border-border bg-card px-3 py-2 text-xs leading-relaxed text-muted-foreground opacity-0 shadow-lg duration-200 group-hover:opacity-100 group-focus-within:opacity-100"
                 >
-                  {hours} Outside them the machine is stopped, so the address will not answer at all.
-                  The badge is a heartbeat the server writes every minute, so it follows reality
-                  rather than the schedule.
+                  It runs on request rather than all the time, so most days the address will not
+                  answer at all. The badge is a heartbeat the server writes every minute, so it shows
+                  whether the server is actually up.
                 </span>
               </p>
             </div>
@@ -172,12 +177,32 @@ const description =
               </p>
             </div>
 
-            <p
+            <div
               id="status-asleep"
               class:list={["mt-4 text-sm text-muted-foreground", status !== "asleep" && "hidden"]}
             >
-              The server is asleep, so that command will not connect right now. {hours}
-            </p>
+              <p>
+                The server is asleep, so that command will not connect right now. It runs on
+                request, or you can run your own copy.
+              </p>
+              <div class="mt-3 flex flex-wrap gap-3">
+                {
+                  [
+                    [request, "request a game"],
+                    [repo, "run it yourself"],
+                  ].map(([href, label]) => (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener"
+                      class="rounded-md border border-border px-3 py-1 font-mono text-muted-foreground duration-200 hover:border-accent hover:text-foreground"
+                    >
+                      {label}
+                    </a>
+                  ))
+                }
+              </div>
+            </div>
           </section>
 
           <section class="mt-16">
