@@ -7,11 +7,10 @@ The page is rendered per request so the leaderboard is live, with a 60 second ca
 it. It reads the same Upstash database the game writes to, under the `battleships:` namespace,
 and renders without a leaderboard if Redis is missing or unreachable.
 
-The game server does not run all week. It writes `battleships:live` every minute with a 150
+The game server only runs on request (the "request a game" link opens a GitHub issue, and the
+terraform is applied by hand). It writes `battleships:live` every minute with a 150
 second expiry, which is what the badge at the top of the page reads, so the badge can lag reality
-by up to a minute of page cache. The hours live in `../hours.json`, which both the sentence on the
-page and the EventBridge schedule in `../terraform` read, so changing them means editing that file,
-applying the terraform, and pushing (the page rebuilds itself on push).
+by up to a minute of page cache.
 
 ```sh
 pnpm install
