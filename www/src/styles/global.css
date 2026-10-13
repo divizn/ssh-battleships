@@ -1,5 +1,8 @@
 @import "tailwindcss";
-@import "@ph0n/theme-kit";
+@import "@ph0n/theme-kit/themes/zinc.css";
+@import "@ph0n/theme-kit/base.css";
+@import "@ph0n/theme-kit/components.css";
+@import "@ph0n/theme-kit/tailwind.css";
 @import "@fontsource-variable/inter";
 
 :root {
